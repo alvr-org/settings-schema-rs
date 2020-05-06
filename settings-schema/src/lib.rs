@@ -61,25 +61,33 @@ pub struct EntryData {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", tag = "type", content = "content")]
 pub enum SchemaNode {
+
     Section {
         entries: Vec<(String, Option<EntryData>)>,
     },
+
     Choice {
         default: String,
         variants: Vec<(String, Option<EntryData>)>,
     },
+
+    #[serde(rename_all = "camelCase")]
     Optional {
         default_set: bool,
         content: Box<SchemaNode>,
     },
+
+    #[serde(rename_all = "camelCase")]
     Switch {
         default_enabled: bool,
         content_advanced: bool,
         content: Box<SchemaNode>,
     },
+
     Boolean {
         default: bool,
     },
+
     Integer {
         default: i128,
         min: i128,
@@ -87,6 +95,7 @@ pub enum SchemaNode {
         step: i128,
         gui: Option<NumericGuiType>,
     },
+
     Float {
         default: f64,
         min: Option<f64>,
@@ -94,14 +103,20 @@ pub enum SchemaNode {
         step: Option<f64>,
         gui: Option<NumericGuiType>,
     },
+
     Text {
         default: String,
     },
+
     Array(Vec<SchemaNode>),
+
+    #[serde(rename_all = "camelCase")]
     Vector {
         default_element: Box<SchemaNode>,
         default: serde_json::Value,
     },
+
+    #[serde(rename_all = "camelCase")]
     Dictionary {
         default_key: String,
         default_value: Box<SchemaNode>,

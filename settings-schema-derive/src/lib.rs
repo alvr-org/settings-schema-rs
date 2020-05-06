@@ -495,7 +495,7 @@ fn schema_named_fields(
         schema_pairs_ts.push(quote! {
             let default = default.#ident;
             (
-                #schema_key.into(), 
+                #schema_key.into(),
                 Some(EntryData {
                     advanced: #advanced,
                     content: #schema_code_ts
@@ -525,6 +525,9 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
     let default_ty_ident = suffix_ident(&input.ident, "Default");
     let schema_fn_ident = schema_fn_ident(&input.ident);
     let case_format = get_case(input.attrs.clone())?;
+    let case_trasform_serde_attr_ts = case_format
+        .as_ref()
+        .map(|format| quote!(#[serde(rename_all = #format)]));
 
     let schema_attrs = schema_attrs(input.attrs, "schema");
     if !schema_attrs.is_empty() {
@@ -592,6 +595,7 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
 
                         variant_aux_objects_ts.push(quote! {
                             #[derive(serde::Serialize, serde::Deserialize, Clone)]
+                            #case_trasform_serde_attr_ts
                             #vis struct #variant_default_ty_ident {
                                 pub #(#variant_field_idents: #variant_field_tys_ts,)*
                             }
@@ -630,6 +634,7 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
                 #(#variant_aux_objects_ts)*
 
                 #[derive(serde::Serialize, serde::Deserialize, Clone)]
+                #case_trasform_serde_attr_ts
                 #vis enum #variant_ty_ident {
                     #(#variant_idents,)*
                 }
@@ -665,6 +670,7 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
 
         #[allow(non_snake_case)]
         #[derive(serde::Serialize, serde::Deserialize, Clone)]
+        #case_trasform_serde_attr_ts
         #vis struct #default_ty_ident {
             #(pub #field_idents: #field_tys_ts,)*
         }
