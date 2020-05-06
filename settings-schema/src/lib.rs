@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub use settings_schema_derive::SettingsSchema;
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", tag = "type", content = "content")]
 pub enum Switch<T> {
     Enabled(T),
     Disabled,
@@ -18,14 +19,14 @@ impl<T> Switch<T> {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SwitchDefault<C> {
-    pub enabled: bool,
+pub struct OptionalDefault<C> {
+    pub set: bool,
     pub content: C,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct OptionalDefault<C> {
-    pub set: bool,
+pub struct SwitchDefault<C> {
+    pub enabled: bool,
     pub content: C,
 }
 
@@ -43,6 +44,7 @@ pub struct DictionaryDefault<V, D> {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum NumericGuiType {
     TextBox,
     UpDown,
@@ -50,13 +52,21 @@ pub enum NumericGuiType {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum SchemaNodeType {
+#[serde(rename_all = "camelCase")]
+pub struct EntryData {
+    pub advanced: bool,
+    pub content: SchemaNode,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", tag = "type", content = "content")]
+pub enum SchemaNode {
     Section {
-        entries: Vec<(String, SchemaNode)>,
+        entries: Vec<(String, Option<EntryData>)>,
     },
     Choice {
-        variants: Vec<(String, Option<SchemaNode>)>,
         default: String,
+        variants: Vec<(String, Option<EntryData>)>,
     },
     Optional {
         default_set: bool,
@@ -64,6 +74,7 @@ pub enum SchemaNodeType {
     },
     Switch {
         default_enabled: bool,
+        content_advanced: bool,
         content: Box<SchemaNode>,
     },
     Boolean {
@@ -96,10 +107,4 @@ pub enum SchemaNodeType {
         default_value: Box<SchemaNode>,
         default: serde_json::Value,
     },
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SchemaNode {
-    pub advanced: bool,
-    pub node_type: SchemaNodeType,
 }

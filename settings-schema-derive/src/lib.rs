@@ -1,3 +1,4 @@
+use heck::{MixedCase, SnakeCase};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
@@ -16,9 +17,8 @@ fn error<T, TT: ToTokens>(message: &str, tokens: TT) -> Result<T, TokenStream> {
 }
 
 fn schema_fn_ident(ty: &Ident) -> Ident {
-    // todo: use proper snake_case transformation
     Ident::new(
-        &format!("{}_schema", ty.to_string().to_lowercase()),
+        &format!("{}_schema", ty.to_string().to_snake_case()),
         ty.span(),
     )
 }
@@ -40,8 +40,23 @@ fn get_only_type_argument(arguments: &PathArguments) -> &Type {
     unreachable!()
 }
 
+fn schema_attrs(attrs: Vec<Attribute>, name: &str) -> Vec<Attribute> {
+    attrs
+        .into_iter()
+        .filter(|attr| {
+            if let Some(attr_ident) = attr.path.get_ident() {
+                attr_ident == name
+            } else {
+                false
+            }
+        })
+        .collect()
+}
+
 struct SchemaAttributes {
+    placeholders: Vec<String>,
     advanced: bool,
+    switch_advanced: bool,
     min: Option<Lit>,
     max: Option<Lit>,
     step: Option<Lit>,
@@ -49,59 +64,68 @@ struct SchemaAttributes {
 }
 
 fn schema_attributes(attrs: Vec<Attribute>) -> Result<SchemaAttributes, TokenStream> {
+    let mut placeholders = vec![];
     let mut advanced = false;
+    let mut switch_advanced = false;
     let mut min = None;
     let mut max = None;
     let mut step = None;
     let mut gui = None;
-    for attr in schema_attrs(attrs) {
+    for attr in schema_attrs(attrs, "schema") {
         let parsed_attr = attr
             .parse_meta()
             .map_err(|e| e.to_compile_error().into_token_stream())?;
-        match parsed_attr {
-            Meta::List(args_list) => {
-                for arg in args_list.nested {
-                    if let NestedMeta::Meta(meta_arg) = arg {
-                        match meta_arg {
-                            Meta::Path(path_arg) => {
-                                if let Some(arg_ident) = path_arg.get_ident() {
-                                    if arg_ident == "advanced" {
-                                        advanced = true;
-                                    } else {
-                                        return error(
-                                            "Unknown identifier or missing value",
-                                            path_arg,
-                                        );
-                                    }
+        if let Meta::List(args_list) = parsed_attr {
+            for arg in args_list.nested {
+                if let NestedMeta::Meta(meta_arg) = arg {
+                    match meta_arg {
+                        Meta::Path(path_arg) => {
+                            if let Some(arg_ident) = path_arg.get_ident() {
+                                if arg_ident == "advanced" {
+                                    advanced = true;
+                                } else if arg_ident == "switch_advanced" {
+                                    switch_advanced = true;
                                 } else {
-                                    return error("Expected identifier", path_arg);
+                                    return error("Unknown identifier or missing value", path_arg);
                                 }
+                            } else {
+                                return error("Expected identifier", path_arg);
                             }
-                            Meta::NameValue(name_value_arg) => {
-                                if let Some(arg_ident) = name_value_arg.path.get_ident() {
-                                    match arg_ident.to_string().as_str() {
-                                        "min" => min = Some(name_value_arg.lit),
-                                        "max" => max = Some(name_value_arg.lit),
-                                        "step" => step = Some(name_value_arg.lit),
-                                        "gui" => gui = Some(name_value_arg.lit),
-                                        _ => return error("Unknown argument name", arg_ident),
-                                    }
-                                } else {
-                                    return error("Expected identifier", name_value_arg.path);
-                                }
-                            }
-                            _ => return error("Nested arguments not supported", meta_arg),
                         }
-                    } else {
-                        return error("Unexpected literal", arg);
+                        Meta::NameValue(name_value_arg) => {
+                            if let Some(arg_ident) = name_value_arg.path.get_ident() {
+                                match arg_ident.to_string().as_str() {
+                                    "min" => min = Some(name_value_arg.lit),
+                                    "max" => max = Some(name_value_arg.lit),
+                                    "step" => step = Some(name_value_arg.lit),
+                                    "gui" => gui = Some(name_value_arg.lit),
+                                    "placeholder" => {
+                                        if let Lit::Str(lit_str) = name_value_arg.lit {
+                                            placeholders.push(lit_str.value());
+                                        } else {
+                                            return error("Expected string", name_value_arg.lit);
+                                        }
+                                    }
+                                    _ => return error("Unknown argument name", arg_ident),
+                                }
+                            } else {
+                                return error("Expected identifier", name_value_arg.path);
+                            }
+                        }
+                        _ => return error("Nested arguments not supported", meta_arg),
                     }
+                } else {
+                    return error("Unexpected literal", arg);
                 }
             }
-            _ => return error("Expected arguments", parsed_attr),
+        } else {
+            return error("Expected arguments", parsed_attr);
         }
     }
     Ok(SchemaAttributes {
+        placeholders,
         advanced,
+        switch_advanced,
         min,
         max,
         step,
@@ -130,13 +154,7 @@ fn bool_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, Toke
         error("Unexpected argument for bool type", arg)?;
     }
 
-    let advanced = schema_attrs.advanced;
-    Ok(quote! {
-        settings_schema::SchemaNode {
-            advanced: #advanced,
-            node_type: settings_schema::SchemaNodeType::Boolean { default }
-        }
-    })
+    Ok(quote!(settings_schema::SchemaNode::Boolean { default }))
 }
 
 fn integer_literal_tokens(literal: Lit) -> Result<TokenStream2, TokenStream> {
@@ -198,21 +216,17 @@ fn integer_type_schema(
     };
     let gui_ts = maybe_numeric_gui(schema_attrs.gui)?;
 
-    let advanced = schema_attrs.advanced;
     Ok(quote! {{
         // use explicit type to catch overflows at compile time
         let min: #ty_ident = #min_ts;
         let max: #ty_ident = #max_ts;
         let step: #ty_ident = #step_ts;
-        settings_schema::SchemaNode {
-            advanced: #advanced,
-            node_type: settings_schema::SchemaNodeType::Integer {
-                default: default as _,
-                min: min as _,
-                max: max as _,
-                step: step as _,
-                gui: #gui_ts,
-            }
+        settings_schema::SchemaNode::Integer {
+            default: default as _,
+            min: min as _,
+            max: max as _,
+            step: step as _,
+            gui: #gui_ts,
         }
     }})
 }
@@ -223,17 +237,13 @@ fn float_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, Tok
     let step_ts = maybe_float_literal(schema_attrs.step)?;
     let gui_ts = maybe_numeric_gui(schema_attrs.gui)?;
 
-    let advanced = schema_attrs.advanced;
     Ok(quote! {
-        settings_schema::SchemaNode {
-            advanced: #advanced,
-            node_type: settings_schema::SchemaNodeType::Float {
-                default: default as _,
-                min: #min_ts,
-                max: #max_ts,
-                step: #step_ts,
-                gui: #gui_ts,
-            }
+        settings_schema::SchemaNode::Float {
+            default: default as _,
+            min: #min_ts,
+            max: #max_ts,
+            step: #step_ts,
+            gui: #gui_ts,
         }
     })
 }
@@ -254,13 +264,7 @@ fn string_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, To
         error("Unexpected argument for String type", arg)?;
     }
 
-    let advanced = schema_attrs.advanced;
-    Ok(quote! {
-        settings_schema::SchemaNode {
-            advanced: #advanced,
-            node_type: settings_schema::SchemaNodeType::Text { default }
-        }
-    })
+    Ok(quote!(settings_schema::SchemaNode::Text { default }))
 }
 
 fn custom_leaf_type_schema(
@@ -283,16 +287,10 @@ fn custom_leaf_type_schema(
     }
 
     let leaf_schema_fn_ident = schema_fn_ident(ty_ident);
-    let advanced = schema_attrs.advanced;
-    Ok(quote! {{
-        let mut default = #leaf_schema_fn_ident(default);
-        default.advanced = #advanced;
-        default
-    }})
+    Ok(quote!(#leaf_schema_fn_ident(default)))
 }
 
 fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, TokenStream> {
-    let advanced = schema_attrs.advanced;
     match &ty {
         Type::Array(ty_array) => {
             let len = &ty_array.len;
@@ -312,10 +310,7 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                         #schema_code_ts
                     }).collect::<Vec<_>>();
 
-                    settings_schema::SchemaNode {
-                        advanced: #advanced,
-                        node_type: settings_schema::SchemaNodeType::Array(content),
-                    }
+                    settings_schema::SchemaNode::Array(content)
                 }},
             })
         }
@@ -356,13 +351,11 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                         let default_set = default.set;
                         let default = default.content;
                         let content = Box::new(#schema_code_ts);
-                        settings_schema::SchemaNode {
-                            advanced: #advanced,
-                            node_type: settings_schema::SchemaNodeType::Optional { default_set, content }
-                        }
+                        settings_schema::SchemaNode::Optional { default_set, content }
                     }},
                 })
             } else if ty_ident == "Switch" {
+                let content_advanced = schema_attrs.switch_advanced;
                 let TypeSchema {
                     default_ty_ts,
                     schema_code_ts,
@@ -373,9 +366,10 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                         let default_enabled = default.enabled;
                         let default = default.content;
                         let content = Box::new(#schema_code_ts);
-                        settings_schema::SchemaNode {
-                            advanced: #advanced,
-                            node_type: settings_schema::SchemaNodeType::Switch { default_enabled, content }
+                        settings_schema::SchemaNode::Switch {
+                            default_enabled,
+                            content_advanced: #content_advanced,
+                            content
                         }
                     }},
                 })
@@ -393,19 +387,19 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                             schema_code_ts,
                         } = type_schema(ty, schema_attrs)?;
                         Ok(TypeSchema {
-                            default_ty_ts: quote!(settings_schema::DictionaryDefault<#default_ty_ts, #ty>),
+                            default_ty_ts: quote! {
+                                settings_schema::DictionaryDefault<#default_ty_ts, #ty>
+                            },
                             schema_code_ts: quote! {{
                                 let default_content =
                                     serde_json::to_value(default.default).unwrap();
                                 let default_key = default.key;
                                 let default = default.value;
                                 let default_value = Box::new(#schema_code_ts);
-                                settings_schema::SchemaNode {
-                                    advanced: #advanced,
-                                    node_type: settings_schema::SchemaNodeType::Dictionary {
-                                        default_key,
-                                        default_value,
-                                        default: default_content }
+                                settings_schema::SchemaNode::Dictionary {
+                                    default_key,
+                                    default_value,
+                                    default: default_content
                                 }
                             }},
                         })
@@ -422,12 +416,9 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                                 serde_json::to_value(default.default).unwrap();
                             let default = default.element;
                             let default_element = Box::new(#schema_code_ts);
-                            settings_schema::SchemaNode {
-                                advanced: #advanced,
-                                node_type: settings_schema::SchemaNodeType::Vector {
-                                    default_element,
-                                    default: default_content
-                                }
+                            settings_schema::SchemaNode::Vector {
+                                default_element,
+                                default: default_content
                             }
                         }},
                     })
@@ -440,17 +431,36 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
     }
 }
 
-fn schema_attrs(attrs: Vec<Attribute>) -> Vec<Attribute> {
-    attrs
-        .into_iter()
-        .filter(|attr| {
-            if let Some(attr_ident) = attr.path.get_ident() {
-                attr_ident == "schema"
-            } else {
-                false
+fn get_case(attrs: Vec<Attribute>) -> Result<Option<String>, TokenStream> {
+    for attr in schema_attrs(attrs, "serde") {
+        let parsed_attr = attr
+            .parse_meta()
+            .map_err(|e| e.to_compile_error().into_token_stream())?;
+        if let Meta::List(args_list) = parsed_attr {
+            for arg in args_list.nested {
+                if let NestedMeta::Meta(meta_arg) = arg {
+                    if let Meta::NameValue(name_value_arg) = meta_arg {
+                        if let Some(arg_ident) = name_value_arg.path.get_ident() {
+                            if arg_ident == "rename_all" {
+                                if let Lit::Str(lit_str) = name_value_arg.lit {
+                                    return Ok(Some(lit_str.value()));
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        })
-        .collect()
+        }
+    }
+    Ok(None)
+}
+
+fn case_transform<'a>(input: &'a str, format: Option<&str>) -> String {
+    match format {
+        Some("camelCase") => input.to_mixed_case(),
+        Some("snake_case") => input.to_snake_case(),
+        _ => input.into(),
+    }
 }
 
 struct NamedFieldsData {
@@ -459,34 +469,48 @@ struct NamedFieldsData {
     schema_code_ts: TokenStream2,
 }
 
-fn schema_named_fields(fields_block: FieldsNamed) -> Result<NamedFieldsData, TokenStream> {
+fn schema_named_fields(
+    fields_block: FieldsNamed,
+    case_format: Option<&str>,
+) -> Result<NamedFieldsData, TokenStream> {
     let mut idents = vec![];
     let mut tys_ts = vec![];
-    let mut schema_values_ts = vec![];
+    let mut schema_pairs_ts = vec![];
     for field in fields_block.named {
         let schema_attrs = schema_attributes(field.attrs)?;
+
+        for ph in &schema_attrs.placeholders {
+            let schema_key = case_transform(ph, case_format);
+            schema_pairs_ts.push(quote!((#schema_key.into(), None)))
+        }
+
+        let advanced = schema_attrs.advanced;
         let TypeSchema {
             default_ty_ts,
             schema_code_ts,
         } = type_schema(&field.ty, schema_attrs)?;
-        idents.push(field.ident.unwrap());
+
+        let ident = field.ident.unwrap();
+        let schema_key = case_transform(&ident.to_string(), case_format);
+        schema_pairs_ts.push(quote! {
+            let default = default.#ident;
+            (
+                #schema_key.into(), 
+                Some(EntryData {
+                    advanced: #advanced,
+                    content: #schema_code_ts
+                })
+            )
+        });
+
+        idents.push(ident);
         tys_ts.push(default_ty_ts);
-        schema_values_ts.push(schema_code_ts);
     }
 
-    let schema_keys = idents.iter().map(ToString::to_string);
     let schema_code_ts = quote! {{
         let mut entries = vec![];
-        #(
-            entries.push({
-                let default = default.#idents;
-                (#schema_keys.into(), #schema_values_ts)
-            });
-        )*
-        settings_schema::SchemaNode {
-            advanced: false,
-            node_type: settings_schema::SchemaNodeType::Section { entries }
-        }
+        #(entries.push({ #schema_pairs_ts });)*
+        settings_schema::SchemaNode::Section { entries }
     }};
 
     Ok(NamedFieldsData {
@@ -500,17 +524,18 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
     let vis = input.vis;
     let default_ty_ident = suffix_ident(&input.ident, "Default");
     let schema_fn_ident = schema_fn_ident(&input.ident);
+    let case_format = get_case(input.attrs.clone())?;
 
-    if !input.generics.params.is_empty() {
-        return error("Generics not supported", &input.generics);
-    }
-
-    let schema_attrs = schema_attrs(input.attrs);
+    let schema_attrs = schema_attrs(input.attrs, "schema");
     if !schema_attrs.is_empty() {
         return error(
             "`schema` attribute supported only on fields and variants",
             &schema_attrs[0],
         );
+    }
+
+    if !input.generics.params.is_empty() {
+        return error("Generics not supported", &input.generics);
     }
 
     let mut field_idents = vec![];
@@ -521,7 +546,7 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
         Data::Struct(data_struct) => {
             match data_struct.fields {
                 Fields::Named(fields_block) => {
-                    let fields_data = schema_named_fields(fields_block)?;
+                    let fields_data = schema_named_fields(fields_block, case_format.as_deref())?;
                     field_idents = fields_data.idents;
                     field_tys_ts = fields_data.tys_ts;
                     schema_root_code_ts = fields_data.schema_code_ts;
@@ -543,9 +568,11 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
                 let schema_attrs = schema_attributes(variant.attrs)?;
                 let variant_ident = variant.ident;
                 let variant_string = variant_ident.to_string();
+                let advanced = schema_attrs.advanced;
                 match variant.fields {
                     Fields::Named(fields_block) => {
-                        let variant_fields_data = schema_named_fields(fields_block)?;
+                        let variant_fields_data =
+                            schema_named_fields(fields_block, case_format.as_deref())?;
                         let variant_field_idents = variant_fields_data.idents;
                         let variant_field_tys_ts = variant_fields_data.tys_ts;
                         let schema_variant_fields_code_ts = variant_fields_data.schema_code_ts;
@@ -557,11 +584,14 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
                         field_tys_ts.push(variant_default_ty_ident.to_token_stream());
                         schema_variants_ts.push(quote! {{
                             let default = default.#variant_ident;
-                            Some(#schema_variant_fields_code_ts)
+                            Some(EntryData {
+                                advanced: #advanced,
+                                content: #schema_variant_fields_code_ts
+                            })
                         }});
 
                         variant_aux_objects_ts.push(quote! {
-                            #[derive(Clone)]
+                            #[derive(serde::Serialize, serde::Deserialize, Clone)]
                             #vis struct #variant_default_ty_ident {
                                 pub #(#variant_field_idents: #variant_field_tys_ts,)*
                             }
@@ -581,7 +611,10 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
 
                         schema_variants_ts.push(quote! {{
                             let default = default.#variant_ident;
-                            Some(#schema_code_ts)
+                            Some(EntryData {
+                                advanced: #advanced,
+                                content: #schema_code_ts
+                            })
                         }});
                     }
                     Fields::Unit => {
@@ -605,6 +638,10 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
             field_idents.push(Ident::new("variant", Span::call_site()));
             field_tys_ts.push(variant_ty_ident.to_token_stream());
 
+            let variant_strings = variant_strings
+                .iter()
+                .map(|ident| case_transform(&ident.to_string(), case_format.as_deref()));
+
             schema_root_code_ts = quote! {{
                 let mut variants = vec![];
                 #(variants.push((#variant_strings.into(), #schema_variants_ts));)*
@@ -614,12 +651,9 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
                     .unwrap()
                     .into();
 
-                settings_schema::SchemaNode {
-                    advanced: false,
-                    node_type: settings_schema::SchemaNodeType::Choice {
-                        variants,
-                        default,
-                    }
+                settings_schema::SchemaNode::Choice {
+                    default,
+                    variants,
                 }
             }}
         }
@@ -630,7 +664,7 @@ fn schema(input: DeriveInput) -> Result<TokenStream2, TokenStream> {
         #maybe_aux_objects_ts
 
         #[allow(non_snake_case)]
-        #[derive(Clone)]
+        #[derive(serde::Serialize, serde::Deserialize, Clone)]
         #vis struct #default_ty_ident {
             #(pub #field_idents: #field_tys_ts,)*
         }
