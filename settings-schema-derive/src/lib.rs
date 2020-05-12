@@ -157,11 +157,15 @@ fn bool_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, Toke
     Ok(quote!(settings_schema::SchemaNode::Boolean { default }))
 }
 
-fn integer_literal_tokens(literal: Lit) -> Result<TokenStream2, TokenStream> {
-    if let Lit::Int(lit_int) = literal {
-        Ok(quote!(#lit_int))
+fn maybe_integer_literal(literal: Option<Lit>) -> Result<TokenStream2, TokenStream> {
+    if let Some(literal) = literal {
+        if let Lit::Int(lit_int) = literal {
+            Ok(quote!(Some(#lit_int)))
+        } else {
+            error("Expected integer literal", literal)
+        }
     } else {
-        error("Expected integer literal", literal)
+        Ok(quote!(None))
     }
 }
 
@@ -195,40 +199,21 @@ fn maybe_numeric_gui(literal: Option<Lit>) -> Result<TokenStream2, TokenStream> 
     }
 }
 
-fn integer_type_schema(
-    ty_ident: &Ident,
-    schema_attrs: SchemaAttributes,
-) -> Result<TokenStream2, TokenStream> {
-    let min_ts = if let Some(literal) = schema_attrs.min {
-        integer_literal_tokens(literal)?
-    } else {
-        quote!(#ty_ident::MIN)
-    };
-    let max_ts = if let Some(literal) = schema_attrs.max {
-        integer_literal_tokens(literal)?
-    } else {
-        quote!(#ty_ident::MAX)
-    };
-    let step_ts = if let Some(literal) = schema_attrs.step {
-        integer_literal_tokens(literal)?
-    } else {
-        quote!(1)
-    };
+fn integer_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, TokenStream> {
+    let min_ts = maybe_integer_literal(schema_attrs.min)?;
+    let max_ts = maybe_integer_literal(schema_attrs.max)?;
+    let step_ts = maybe_integer_literal(schema_attrs.step)?;
     let gui_ts = maybe_numeric_gui(schema_attrs.gui)?;
 
-    Ok(quote! {{
-        // use explicit type to catch overflows at compile time
-        let min: #ty_ident = #min_ts;
-        let max: #ty_ident = #max_ts;
-        let step: #ty_ident = #step_ts;
+    Ok(quote! {
         settings_schema::SchemaNode::Integer {
             default: default as _,
-            min: min as _,
-            max: max as _,
-            step: step as _,
+            min: #min_ts,
+            max: #max_ts,
+            step: #step_ts,
             gui: #gui_ts,
         }
-    }})
+    })
 }
 
 fn float_type_schema(schema_attrs: SchemaAttributes) -> Result<TokenStream2, TokenStream> {
@@ -322,7 +307,7 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                 let schema_code_ts = match ty_ident.to_string().as_str() {
                     "bool" => bool_type_schema(schema_attrs)?,
                     "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" => {
-                        integer_type_schema(ty_ident, schema_attrs)?
+                        integer_type_schema(schema_attrs)?
                     }
                     "f32" | "f64" => float_type_schema(schema_attrs)?,
                     "String" => string_type_schema(schema_attrs)?,

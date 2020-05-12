@@ -111,9 +111,9 @@ pub enum SchemaNode {
 
     Integer {
         default: i128,
-        min: i128,
-        max: i128,
-        step: i128,
+        min: Option<i128>,
+        max: Option<i128>,
+        step: Option<i128>,
         gui: Option<NumericGuiType>,
     },
 
