@@ -1,9 +1,9 @@
 [package]
-name = 'settings-schema'
-version = '0.3.1'
-authors = ['Riccardo Zaglia <riccardo.zaglia5@gmail.com>']
-license = 'MIT'
-edition = '2018'
+name = "settings-schema"
+version = "0.3.1"
+authors = ["Riccardo Zaglia <riccardo.zaglia5@gmail.com>"]
+license = "MIT"
+edition = "2018"
 
 [features]
 default = []
@@ -11,9 +11,9 @@ rename_camel_case = []
 rename_snake_case = []
 
 [dependencies]
-serde = { version = '^1.0', features = ['derive'] }
-serde_json = '^1.0'
-settings-schema-derive = { path = '../settings-schema-derive', version = '0.3.0' }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+settings-schema-derive = { path = "../settings-schema-derive", version = "0.3.0" }
 
 [[example]]
-name = 'example0'
+name = "example0"
