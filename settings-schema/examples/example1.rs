@@ -5,7 +5,7 @@ use settings_schema::*;
 struct Test1 {
     #[schema(higher_order(
         name = "hello",
-        data(bool(default = false)),
+        data(boolean(default = false)),
         modifier(
             target = r#"hello1["0"].hello2"#,
             update_op = "assign",

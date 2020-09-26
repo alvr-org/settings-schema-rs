@@ -37,7 +37,7 @@ fn forbid_numeric_attrs(field: &SchemaField, type_str: &str) -> TResult<()> {
 
     let tokens = if let Some(arg) = maybe_invalid_arg {
         arg.to_token_stream()
-    } else if let Some(arg) = &field.gui {
+    } else if field.gui.is_some() {
         quote!()
     } else {
         return Ok(());

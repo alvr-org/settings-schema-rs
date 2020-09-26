@@ -1,7 +1,7 @@
 use darling::*;
 use proc_macro2::Ident;
 use quote::quote;
-use syn::{Expr, ExprField, ExprIndex, ExprMethodCall, LitStr, Member};
+use syn::{Expr, ExprField, ExprIndex, LitStr, Member};
 
 use crate::{error, TResult, TokenStream2};
 
@@ -22,7 +22,7 @@ enum HigherOrderType {
 
         gui: ChoiceControlType,
     },
-    Bool {
+    Boolean {
         default: bool,
     },
     Action,
@@ -65,12 +65,10 @@ fn parse_segments(expr: &Expr) -> TResult<Vec<TokenStream2>> {
             let maybe_ident = syn::parse2::<Ident>(first_segment.to_token_stream()).ok();
             if let Some(ident) = maybe_ident {
                 let ident_str = ident.to_string();
-                return Ok(vec![
-                    quote!(settings_schema::PathSegment {
-                        segment_type: settings_schema::PathSegmentType::Identifier,
-                        value: #ident_str.into(),
-                    }),
-                ]);
+                return Ok(vec![quote!(settings_schema::PathSegment {
+                    segment_type: settings_schema::PathSegmentType::Identifier,
+                    value: #ident_str.into(),
+                })]);
             }
         }
         Expr::Field(ExprField {
@@ -154,8 +152,8 @@ pub fn schema(setting: &HigherOrderSetting) -> TResult {
                 gui: #gui_ts,
             })
         }
-        HigherOrderType::Bool { default } => {
-            quote!(settings_schema::HigherOrderType::Bool { default: #default })
+        HigherOrderType::Boolean { default } => {
+            quote!(settings_schema::HigherOrderType::Boolean { default: #default })
         }
         HigherOrderType::Action => quote!(settings_schema::HigherOrderType::Action),
     };
