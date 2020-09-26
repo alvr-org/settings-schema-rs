@@ -103,11 +103,15 @@ pub enum UpdateType {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(tag = "type", content = "content")]
-pub enum PathSegment {
-    Parent,
-    Identifier(String),
-    Subscript(String),
+pub enum PathSegmentType {
+    Identifier,
+    Subscript,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PathSegment {
+    pub segment_type: PathSegmentType,
+    pub value: String
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

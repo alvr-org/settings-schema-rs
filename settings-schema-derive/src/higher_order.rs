@@ -66,28 +66,11 @@ fn parse_segments(expr: &Expr) -> TResult<Vec<TokenStream2>> {
             if let Some(ident) = maybe_ident {
                 let ident_str = ident.to_string();
                 return Ok(vec![
-                    quote!(settings_schema::PathSegment::Identifier(#ident_str.into())),
+                    quote!(settings_schema::PathSegment {
+                        segment_type: settings_schema::PathSegmentType::Identifier,
+                        value: #ident_str.into(),
+                    }),
                 ]);
-            }
-        }
-        Expr::Call(call) => {
-            if call.to_token_stream().to_string() == "parent()" {
-                return Ok(vec![quote!(settings_schema::PathSegment::Parent)]);
-            }
-        }
-        Expr::MethodCall(ExprMethodCall {
-            attrs,
-            receiver,
-            method,
-            turbofish,
-            args,
-            ..
-        }) => {
-            if args.is_empty() && attrs.is_empty() && turbofish.is_none() && method == "parent" {
-                let mut segments_ts = parse_segments(&receiver)?;
-                segments_ts.push(quote!(settings_schema::PathSegment::Parent));
-
-                return Ok(segments_ts);
             }
         }
         Expr::Field(ExprField {
@@ -100,8 +83,10 @@ fn parse_segments(expr: &Expr) -> TResult<Vec<TokenStream2>> {
                 if let Member::Named(ident) = &member {
                     let mut segments_ts = parse_segments(&base)?;
                     let ident_str = ident.to_string();
-                    segments_ts
-                        .push(quote!(settings_schema::PathSegment::Identifier(#ident_str.into())));
+                    segments_ts.push(quote!(settings_schema::PathSegment {
+                        segment_type: settings_schema::PathSegmentType::Identifier,
+                        value: #ident_str.into(),
+                    }));
 
                     return Ok(segments_ts);
                 }
@@ -116,7 +101,10 @@ fn parse_segments(expr: &Expr) -> TResult<Vec<TokenStream2>> {
 
                 let mut segments_ts = parse_segments(&expr)?;
                 let lit_str = index_lit.value();
-                segments_ts.push(quote!(settings_schema::PathSegment::Subscript(#lit_str.into())));
+                segments_ts.push(quote!(settings_schema::PathSegment {
+                    segment_type: settings_schema::PathSegmentType::Subscript,
+                    value: #lit_str.into(),
+                }));
 
                 return Ok(segments_ts);
             }

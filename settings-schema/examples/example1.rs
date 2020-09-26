@@ -5,12 +5,13 @@ use settings_schema::*;
 struct Test1 {
     #[schema(higher_order(
         name = "hello",
-        data = "action",
+        data(bool(default = false)),
         modifier(
-            target = r#"parent().hello["0"]"#,
+            target = r#"hello1["0"].hello2"#,
             update_op = "assign",
-            expr = "",
-            var = "parent().hello"
+            expr = "{} * {}",
+            var = "input",
+            var = "hello3"
         )
     ))]
     #[schema(advanced)]
@@ -29,7 +30,10 @@ struct Test1 {
 
 fn main() {
     // let test1 = Test1 {test: true};
-    let schema = Test1::schema(Test1Default { test: false, float: 3. });
+    let schema = Test1::schema(Test1Default {
+        test: false,
+        float: 3.,
+    });
 
     println!("{}", serde_json::to_string_pretty(&schema).unwrap())
 }
