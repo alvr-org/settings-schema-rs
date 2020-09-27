@@ -2,6 +2,7 @@ mod higher_order;
 mod ty;
 
 use darling::{ast::Fields, util::Flag, FromDeriveInput, FromField, FromVariant};
+use heck::SnakeCase;
 use higher_order as ho;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -24,6 +25,10 @@ fn suffix_ident(ty_ident: &Ident, suffix: &str) -> Ident {
         &format!("{}{}", ty_ident.to_string(), suffix),
         ty_ident.span(),
     )
+}
+
+fn snake_case_ident(ty_ident: &Ident) -> Ident {
+    Ident::new(&ty_ident.to_string().to_snake_case(), ty_ident.span())
 }
 
 #[derive(FromField)]
@@ -142,6 +147,10 @@ fn variants_schema(vis: &Visibility, ident: &Ident, meta: Vec<VariantMeta>) -> T
 
     for meta in meta {
         let variant_ident = meta.ident;
+        let snake_case_variant_ident = snake_case_ident(&variant_ident);
+
+        variants.push(variant_ident.clone());
+        keys.push(variant_ident.to_string().to_snake_case());
 
         match meta.fields.style {
             darling::ast::Style::Tuple => {
@@ -168,14 +177,12 @@ fn variants_schema(vis: &Visibility, ident: &Ident, meta: Vec<VariantMeta>) -> T
                     schema_code_ts,
                 } = ty::schema(&field_meta.ty, &field_meta)?;
 
-                variants.push(variant_ident.clone());
-                data_variants.push(variant_ident.clone());
+                data_variants.push(snake_case_variant_ident.clone());
                 data_tys_ts.push(default_ty_ts);
-                keys.push(variant_ident.to_string());
                 entry_data_ts.push(quote!(Some(settings_schema::EntryData {
                     advanced: #advanced,
                     content: {
-                        let default = default.#variant_ident;
+                        let default = default.#snake_case_variant_ident;
                         #schema_code_ts
                     }
                 })));
@@ -190,14 +197,12 @@ fn variants_schema(vis: &Visibility, ident: &Ident, meta: Vec<VariantMeta>) -> T
                     ..
                 } = named_fields_schema(meta.fields.fields)?;
 
-                variants.push(variant_ident.clone());
-                data_variants.push(variant_ident.clone());
+                data_variants.push(snake_case_variant_ident.clone());
                 data_tys_ts.push(default_ty_ts.clone());
-                keys.push(variant_ident.to_string());
                 entry_data_ts.push(quote!(Some(settings_schema::EntryData {
                     advanced: false,
                     content: {
-                        let default = default.#variant_ident;
+                        let default = default.#snake_case_variant_ident;
                         #schema_code_ts
                     }
                 })));
@@ -209,8 +214,6 @@ fn variants_schema(vis: &Visibility, ident: &Ident, meta: Vec<VariantMeta>) -> T
                 });
             }
             darling::ast::Style::Unit => {
-                variants.push(variant_ident.clone());
-                keys.push(variant_ident.to_string());
                 entry_data_ts.push(quote!(None));
             }
         }
@@ -235,6 +238,7 @@ fn variants_schema(vis: &Visibility, ident: &Ident, meta: Vec<VariantMeta>) -> T
             #(#aux_objects_ts)*
 
             #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone)]
+            #[serde(rename_all = "snake_case")]
             #vis enum #default_variant_ty {
                 #(#variants,)*
             }
