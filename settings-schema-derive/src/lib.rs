@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use std::string::ToString;
-use syn::{DeriveInput, Error, Ident, Lit, Type};
+use syn::{DeriveInput, Error, Ident, Lit, Type, Visibility};
 
 type TResult<T = TokenStream2> = Result<T, TokenStream>;
 
@@ -26,16 +26,11 @@ fn suffix_ident(ty_ident: &Ident, suffix: &str) -> Ident {
     )
 }
 
-#[derive(FromVariant)]
-#[darling(attributes(schema), supports(unit, newtype, named))]
-struct SchemaVariant {
-    ident: Ident,
-    fields: darling::ast::Fields<SchemaField>,
-}
-
 #[derive(FromField)]
 #[darling(attributes(schema))]
-struct SchemaField {
+struct FieldMeta {
+    vis: Visibility,
+
     ident: Option<Ident>,
 
     ty: Type,
@@ -66,116 +61,220 @@ struct SchemaField {
     gui: Option<ty::NumericGuiType>,
 }
 
+#[derive(FromVariant)]
+#[darling(attributes(schema), supports(unit, newtype, named))]
+struct VariantMeta {
+    ident: Ident,
+    fields: darling::ast::Fields<FieldMeta>,
+}
+
 // attributes(schema) is specified to deny any #[schema()] attributes at this level
 #[derive(FromDeriveInput)]
 #[darling(attributes(schema), supports(struct_named, enum_any))]
-struct SchemaDeriveInput {
-    data: darling::ast::Data<SchemaVariant, SchemaField>,
+struct DeriveInputMeta {
+    data: darling::ast::Data<VariantMeta, FieldMeta>,
 }
 
-struct NamedFieldsData {
-    idents: Vec<Ident>,
-    tys_ts: Vec<TokenStream2>,
+struct SchemaData {
+    default_fields_ts: TokenStream2,
     schema_code_ts: TokenStream2,
+    aux_objects_ts: Option<TokenStream2>,
 }
 
-fn named_fields_schema(fields: Vec<SchemaField>) -> TResult<NamedFieldsData> {
+fn named_fields_schema(meta: Vec<FieldMeta>) -> TResult<SchemaData> {
+    let mut vis = vec![];
     let mut idents = vec![];
     let mut tys_ts = vec![];
-    let mut schema_pairs_ts = vec![];
-    for field in fields {
-        for ph in &field.placeholders {
-            schema_pairs_ts.push(quote!((#ph.into(), settings_schema::EntryType::Placeholder)))
+    let mut keys = vec![];
+    let mut entry_types_ts = vec![];
+
+    for meta in meta {
+        for ph in &meta.placeholders {
+            keys.push(ph.clone());
+            entry_types_ts.push(quote!(settings_schema::EntryType::Placeholder))
         }
 
-        for setting in &field.higher_order {
-            schema_pairs_ts.push(ho::schema(setting)?);
+        for setting in &meta.higher_order {
+            let ho::Entry { key, entry_type_ts } = ho::schema(setting)?;
+
+            keys.push(key);
+            entry_types_ts.push(entry_type_ts);
         }
 
-        let advanced = field.advanced.is_some();
-        let ty::Schema {
+        let ident = meta.ident.as_ref().unwrap().clone();
+        let advanced = meta.advanced.is_some();
+        let ty::SchemaData {
             default_ty_ts,
             schema_code_ts,
-        } = ty::schema(&field.ty, &field)?;
+        } = ty::schema(&meta.ty, &meta)?;
 
-        let ident = field.ident.unwrap();
-        let key = ident.to_string();
-        schema_pairs_ts.push(quote! {
-            (
-                #key.into(),
-                settings_schema::EntryType::Data(settings_schema::EntryData {
-                    advanced: #advanced,
-                    content: {
-                        let default = default.#ident;
-                        #schema_code_ts
-                    }
-                })
-            )
-        });
-
-        idents.push(ident);
+        vis.push(meta.vis);
+        idents.push(ident.clone());
         tys_ts.push(default_ty_ts);
+        keys.push(ident.to_string());
+        entry_types_ts.push(quote!(
+            settings_schema::EntryType::Data(settings_schema::EntryData {
+                advanced: #advanced,
+                content: {
+                    let default = default.#ident;
+                    #schema_code_ts
+                }
+            })
+        ));
     }
 
-    let schema_code_ts = quote! {{
-        let mut entries = vec![];
-        #(entries.push(#schema_pairs_ts);)*
-        settings_schema::SchemaNode::Section(entries)
-    }};
-
-    Ok(NamedFieldsData {
-        idents,
-        tys_ts,
-        schema_code_ts,
+    Ok(SchemaData {
+        default_fields_ts: quote!(#(#vis #idents: #tys_ts,)*),
+        schema_code_ts: quote!(settings_schema::SchemaNode::Section(
+            vec![#((#keys.into(), #entry_types_ts)),*]
+        )),
+        aux_objects_ts: None,
     })
 }
 
-struct SchemaVariants {
-    variants: (Ident, Option<TokenStream2>),
-    schema_code_ts: TokenStream2,
+fn variants_schema(vis: &Visibility, ident: &Ident, meta: Vec<VariantMeta>) -> TResult<SchemaData> {
+    let mut variants = vec![];
+    let mut data_variants = vec![];
+    let mut data_tys_ts = vec![];
+    let mut keys = vec![];
+    let mut entry_data_ts = vec![];
+    let mut aux_objects_ts = vec![];
+
+    for meta in meta {
+        let variant_ident = meta.ident;
+
+        match meta.fields.style {
+            darling::ast::Style::Tuple => {
+                // darling macro attribute makes sure there is one and only one field
+                let field_meta = &meta.fields.fields[0];
+
+                if !field_meta.higher_order.is_empty() {
+                    error(
+                        "'higher_order' attributes not supported in this position",
+                        &variant_ident,
+                    )?;
+                }
+
+                if !field_meta.placeholders.is_empty() {
+                    error(
+                        "'placeholder' attributes not supported in this position",
+                        &variant_ident,
+                    )?;
+                }
+
+                let advanced = field_meta.advanced.is_some();
+                let ty::SchemaData {
+                    default_ty_ts,
+                    schema_code_ts,
+                } = ty::schema(&field_meta.ty, &field_meta)?;
+
+                variants.push(variant_ident.clone());
+                data_variants.push(variant_ident.clone());
+                data_tys_ts.push(default_ty_ts);
+                keys.push(variant_ident.to_string());
+                entry_data_ts.push(quote!(Some(settings_schema::EntryData {
+                    advanced: #advanced,
+                    content: {
+                        let default = default.#variant_ident;
+                        #schema_code_ts
+                    }
+                })));
+            }
+            darling::ast::Style::Struct => {
+                let default_ty_ts =
+                    suffix_ident(&suffix_ident(ident, &variant_ident.to_string()), "Default")
+                        .to_token_stream();
+                let SchemaData {
+                    default_fields_ts,
+                    schema_code_ts,
+                    ..
+                } = named_fields_schema(meta.fields.fields)?;
+
+                variants.push(variant_ident.clone());
+                data_variants.push(variant_ident.clone());
+                data_tys_ts.push(default_ty_ts.clone());
+                keys.push(variant_ident.to_string());
+                entry_data_ts.push(quote!(Some(settings_schema::EntryData {
+                    advanced: false,
+                    content: {
+                        let default = default.#variant_ident;
+                        #schema_code_ts
+                    }
+                })));
+                aux_objects_ts.push(quote! {
+                    #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone)]
+                    #vis struct #default_ty_ts {
+                        #default_fields_ts
+                    }
+                });
+            }
+            darling::ast::Style::Unit => {
+                variants.push(variant_ident.clone());
+                keys.push(variant_ident.to_string());
+                entry_data_ts.push(quote!(None));
+            }
+        }
+    }
+
+    let default_variant_ty = suffix_ident(&ident, "DefaultVariant");
+
+    Ok(SchemaData {
+        default_fields_ts: quote! {
+            #(#vis #data_variants: #data_tys_ts,)*
+            variant: #default_variant_ty,
+        },
+        schema_code_ts: quote!(settings_schema::SchemaNode::Choice {
+            default: settings_schema::to_json_value(default.variant)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .into(),
+            variants: vec![#((#keys.into(), #entry_data_ts)),*]
+        }),
+        aux_objects_ts: Some(quote! {
+            #(#aux_objects_ts)*
+
+            #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone)]
+            #vis enum #default_variant_ty {
+                #(#variants,)*
+            }
+        }),
+    })
 }
 
-fn schema_variants(variants: Vec<SchemaVariant>) {}
-
 fn schema(derive_input: DeriveInput) -> TResult {
-    let schema_derive_input: SchemaDeriveInput =
-        FromDeriveInput::from_derive_input(&derive_input).map_err(|e| e.write_errors())?;
-
     if !derive_input.generics.params.is_empty() {
         return error("Generics not supported", &derive_input.generics);
     }
 
-    let schema_fn_content_ts;
-    let field_idents;
-    let field_tys_ts;
-    match schema_derive_input.data {
-        darling::ast::Data::Enum(variants) => {
-            schema_variants(variants);
-            todo!();
-        }
-        darling::ast::Data::Struct(Fields { fields, .. }) => {
-            let fields_data = named_fields_schema(fields)?;
-            schema_fn_content_ts = fields_data.schema_code_ts;
-            field_idents = fields_data.idents;
-            field_tys_ts = fields_data.tys_ts;
-            // panic!("{:?}", named_fields_data.schema_code_ts.to_string())
-        }
-    }
+    let meta: DeriveInputMeta =
+        FromDeriveInput::from_derive_input(&derive_input).map_err(|e| e.write_errors())?;
 
     let vis = derive_input.vis;
     let derive_input_ident = derive_input.ident;
     let default_ty_ident = suffix_ident(&derive_input_ident, "Default");
 
+    let SchemaData {
+        default_fields_ts,
+        schema_code_ts,
+        aux_objects_ts,
+    } = match meta.data {
+        darling::ast::Data::Enum(variants) => variants_schema(&vis, &derive_input_ident, variants)?,
+        darling::ast::Data::Struct(Fields { fields, .. }) => named_fields_schema(fields)?,
+    };
+
     Ok(quote! {
+        #aux_objects_ts
+
         #[allow(non_snake_case)]
         #[derive(serde::Serialize, serde::Deserialize, Clone)]
         #vis struct #default_ty_ident {
-            #(#vis #field_idents: #field_tys_ts,)*
+            #default_fields_ts
         }
 
         impl #derive_input_ident {
             #vis fn schema(default: #default_ty_ident) -> settings_schema::SchemaNode {
-                #schema_fn_content_ts
+                #schema_code_ts
             }
         }
     })

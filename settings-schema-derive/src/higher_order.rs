@@ -130,7 +130,12 @@ fn parse_var_path_string(path: &str) -> TResult {
     }
 }
 
-pub fn schema(setting: &HigherOrderSetting) -> TResult {
+pub struct Entry {
+    pub key: String,
+    pub entry_type_ts: TokenStream2,
+}
+
+pub fn schema(setting: &HigherOrderSetting) -> TResult<Entry> {
     let key = &setting.name;
 
     let data_type_ts = match &setting.data_type {
@@ -182,13 +187,11 @@ pub fn schema(setting: &HigherOrderSetting) -> TResult {
         }))
     }
 
-    Ok(quote! {
-        (
-            #key.into(),
-            settings_schema::EntryType::HigherOrder {
-                data_type: #data_type_ts,
-                modifiers: vec![#(#modifiers_ts),*],
-            }
-        )
+    Ok(Entry {
+        key: key.clone(),
+        entry_type_ts: quote!(settings_schema::EntryType::HigherOrder {
+            data_type: #data_type_ts,
+            modifiers: vec![#(#modifiers_ts),*],
+        }),
     })
 }

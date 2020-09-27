@@ -1,4 +1,4 @@
-use crate::{error, suffix_ident, SchemaField, TResult, TokenStream2};
+use crate::{error, suffix_ident, FieldMeta, TResult, TokenStream2};
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -12,7 +12,7 @@ pub enum NumericGuiType {
     Slider,
 }
 
-pub struct Schema {
+pub struct SchemaData {
     pub default_ty_ts: TokenStream2,
     pub schema_code_ts: TokenStream2,
 }
@@ -27,13 +27,12 @@ fn get_only_type_argument(arguments: &PathArguments) -> &Type {
     unreachable!()
 }
 
-fn forbid_numeric_attrs(field: &SchemaField, type_str: &str) -> TResult<()> {
+fn forbid_numeric_attrs(field: &FieldMeta, type_str: &str) -> TResult<()> {
     let maybe_invalid_arg = field
         .min
         .as_ref()
         .or_else(|| field.max.as_ref())
         .or_else(|| field.step.as_ref());
-    // .map_or_else(|| field.gui.as_ref());
 
     let tokens = if let Some(arg) = maybe_invalid_arg {
         arg.to_token_stream()
@@ -49,7 +48,7 @@ fn forbid_numeric_attrs(field: &SchemaField, type_str: &str) -> TResult<()> {
     )
 }
 
-fn bool_type_schema(field: &SchemaField) -> TResult {
+fn bool_type_schema(field: &FieldMeta) -> TResult {
     forbid_numeric_attrs(field, "bool")?;
 
     Ok(quote!(settings_schema::SchemaNode::Boolean { default }))
@@ -91,7 +90,7 @@ fn maybe_numeric_gui(gui: Option<&NumericGuiType>) -> TResult {
     }
 }
 
-fn integer_type_schema(field: &SchemaField) -> TResult {
+fn integer_type_schema(field: &FieldMeta) -> TResult {
     let min_ts = maybe_integer_literal(field.min.as_ref())?;
     let max_ts = maybe_integer_literal(field.max.as_ref())?;
     let step_ts = maybe_integer_literal(field.step.as_ref())?;
@@ -108,7 +107,7 @@ fn integer_type_schema(field: &SchemaField) -> TResult {
     })
 }
 
-fn float_type_schema(field: &SchemaField) -> TResult {
+fn float_type_schema(field: &FieldMeta) -> TResult {
     let min_ts = maybe_float_literal(field.min.as_ref())?;
     let max_ts = maybe_float_literal(field.max.as_ref())?;
     let step_ts = maybe_float_literal(field.step.as_ref())?;
@@ -125,26 +124,26 @@ fn float_type_schema(field: &SchemaField) -> TResult {
     })
 }
 
-fn string_type_schema(field: &SchemaField) -> TResult {
+fn string_type_schema(field: &FieldMeta) -> TResult {
     forbid_numeric_attrs(field, "String")?;
 
     Ok(quote!(settings_schema::SchemaNode::Text { default }))
 }
 
-fn custom_leaf_type_schema(ty_ident: &Ident, field: &SchemaField) -> TResult {
+fn custom_leaf_type_schema(ty_ident: &Ident, field: &FieldMeta) -> TResult {
     forbid_numeric_attrs(field, "custom")?;
 
     Ok(quote!(#ty_ident::schema(default)))
 }
 
-pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStream> {
+pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStream> {
     match &ty {
         Type::Array(TypeArray { len, .. }) => {
-            let Schema {
+            let SchemaData {
                 default_ty_ts,
                 schema_code_ts,
-            } = schema(ty, field)?;
-            Ok(Schema {
+            } = schema(ty, meta)?;
+            Ok(SchemaData {
                 default_ty_ts: quote!([#default_ty_ts; #len]),
                 schema_code_ts: quote! {{
                     let length = #len;
@@ -166,19 +165,19 @@ pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStre
             if matches!(ty_last.arguments, PathArguments::None) {
                 let mut custom_default_ty_ts = None;
                 let schema_code_ts = match ty_ident.to_string().as_str() {
-                    "bool" => bool_type_schema(field)?,
+                    "bool" => bool_type_schema(meta)?,
                     "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" => {
-                        integer_type_schema(field)?
+                        integer_type_schema(meta)?
                     }
-                    "f32" | "f64" => float_type_schema(field)?,
-                    "String" => string_type_schema(field)?,
+                    "f32" | "f64" => float_type_schema(meta)?,
+                    "String" => string_type_schema(meta)?,
                     _ => {
                         custom_default_ty_ts =
                             Some(suffix_ident(&ty_ident, "Default").to_token_stream());
-                        custom_leaf_type_schema(ty_ident, field)?
+                        custom_leaf_type_schema(ty_ident, meta)?
                     }
                 };
-                Ok(Schema {
+                Ok(SchemaData {
                     default_ty_ts: if let Some(tokens) = custom_default_ty_ts {
                         tokens
                     } else {
@@ -187,11 +186,11 @@ pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStre
                     schema_code_ts,
                 })
             } else if ty_ident == "Option" {
-                let Schema {
+                let SchemaData {
                     default_ty_ts,
                     schema_code_ts,
-                } = schema(get_only_type_argument(&ty_last.arguments), field)?;
-                Ok(Schema {
+                } = schema(get_only_type_argument(&ty_last.arguments), meta)?;
+                Ok(SchemaData {
                     default_ty_ts: quote!(settings_schema::OptionalDefault<#default_ty_ts>),
                     schema_code_ts: quote! {{
                         let default_set = default.set;
@@ -201,12 +200,12 @@ pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStre
                     }},
                 })
             } else if ty_ident == "Switch" {
-                let content_advanced = field.switch_advanced.is_some();
-                let Schema {
+                let content_advanced = meta.switch_advanced.is_some();
+                let SchemaData {
                     default_ty_ts,
                     schema_code_ts,
-                } = schema(get_only_type_argument(&ty_last.arguments), field)?;
-                Ok(Schema {
+                } = schema(get_only_type_argument(&ty_last.arguments), meta)?;
+                Ok(SchemaData {
                     default_ty_ts: quote!(settings_schema::SwitchDefault<#default_ty_ts>),
                     schema_code_ts: quote! {{
                         let default_enabled = default.enabled;
@@ -228,11 +227,11 @@ pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStre
                         error("First argument must be a `String`", &ty_tuple.elems)
                     } else {
                         let ty_arg = &ty_tuple.elems[1];
-                        let Schema {
+                        let SchemaData {
                             default_ty_ts,
                             schema_code_ts,
-                        } = schema(ty_arg, field)?;
-                        Ok(Schema {
+                        } = schema(ty_arg, meta)?;
+                        Ok(SchemaData {
                             default_ty_ts: quote! {
                                 settings_schema::DictionaryDefault<#default_ty_ts, #ty_arg>
                             },
@@ -251,11 +250,11 @@ pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStre
                         })
                     }
                 } else {
-                    let Schema {
+                    let SchemaData {
                         default_ty_ts,
                         schema_code_ts,
-                    } = schema(ty_arg, field)?;
-                    Ok(Schema {
+                    } = schema(ty_arg, meta)?;
+                    Ok(SchemaData {
                         default_ty_ts: quote!(settings_schema::VectorDefault<#default_ty_ts, #ty_arg>),
                         schema_code_ts: quote! {{
                             let default_content =
@@ -271,7 +270,7 @@ pub(crate) fn schema(ty: &Type, field: &SchemaField) -> Result<Schema, TokenStre
                 }
             } else {
                 error(
-                    "Generics are supported only for Option, Switch, Vec",
+                    "Type arguments are supported only for Option, Switch, Vec",
                     &ty_last,
                 )
             }
