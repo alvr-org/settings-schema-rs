@@ -377,7 +377,7 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                             },
                             schema_code_ts: quote! {{
                                 let default_content =
-                                    serde_json::to_value(default.default).unwrap();
+                                    serde_json::to_value(default.content).unwrap();
                                 let default_key = default.key;
                                 let default = default.value;
                                 let default_value = Box::new(#schema_code_ts);
@@ -398,7 +398,7 @@ fn type_schema(ty: &Type, schema_attrs: SchemaAttributes) -> Result<TypeSchema, 
                         default_ty_ts: quote!(settings_schema::VectorDefault<#default_ty_ts, #ty>),
                         schema_code_ts: quote! {{
                             let default_content =
-                                serde_json::to_value(default.default).unwrap();
+                                serde_json::to_value(default.content).unwrap();
                             let default = default.element;
                             let default_element = Box::new(#schema_code_ts);
                             settings_schema::SchemaNode::Vector {

@@ -42,18 +42,18 @@ pub struct SwitchDefault<C> {
 /// Type used to specify the default value for type `Vec`.  
 /// It allows setting the default for the vector (all elements) and the default value for new elements.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct VectorDefault<E, D> {
+pub struct VectorDefault<E, C> {
     pub element: E,
-    pub default: Vec<D>,
+    pub content: Vec<C>,
 }
 
 /// Type used to specify the default value for type `Vec<(String, X)>`.  
 /// It allows setting the default for the dictionary (all entries) and the default key and value for new entries.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct DictionaryDefault<V, D> {
+pub struct DictionaryDefault<V, C> {
     pub key: String,
     pub value: V,
-    pub default: Vec<(String, D)>,
+    pub content: Vec<(String, C)>,
 }
 
 /// GUI type associated to a numeric node.
