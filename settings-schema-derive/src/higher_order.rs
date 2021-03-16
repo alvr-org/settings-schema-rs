@@ -69,14 +69,14 @@ pub fn schema(setting: &HigherOrderSetting) -> TResult<Entry> {
             gui,
         } => {
             let gui_ts = match gui {
-                ChoiceControlType::Dropdown => quote!(settings_schema::ChoiceControlType::DropDown),
+                ChoiceControlType::Dropdown => quote!(settings_schema::ChoiceControlType::Dropdown),
                 ChoiceControlType::ButtonGroup => {
                     quote!(settings_schema::ChoiceControlType::ButtonGroup)
                 }
             };
 
             quote!(settings_schema::HigherOrderType::Choice {
-                default: #default.into()
+                default: #default.into(),
                 variants: vec![#(#variants.into()),*],
                 gui: #gui_ts,
             })
