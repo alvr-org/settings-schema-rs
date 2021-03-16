@@ -148,11 +148,11 @@ fn custom_leaf_type_schema(ty_ident: &Ident, field: &FieldMeta) -> TResult {
 // there is also the `switch_default` flag that is used by each Switch type inside the type chain.
 pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStream> {
     match &ty {
-        Type::Array(TypeArray { len, .. }) => {
+        Type::Array(TypeArray { len, elem, .. }) => {
             let SchemaData {
                 default_ty_ts,
                 schema_code_ts,
-            } = schema(ty, meta)?;
+            } = schema(elem, meta)?;
             Ok(SchemaData {
                 default_ty_ts: quote!([#default_ty_ts; #len]),
                 schema_code_ts: quote! {{
