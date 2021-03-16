@@ -23,26 +23,6 @@ enum HigherOrderType {
 }
 
 #[derive(FromMeta)]
-enum UpdateType {
-    Assign,
-    Remove,
-}
-
-#[derive(FromMeta)]
-struct ModifierDesc {
-    target: String,
-
-    #[darling(default)]
-    update_op: Option<UpdateType>,
-
-    expr: String,
-
-    #[darling(multiple)]
-    #[darling(rename = "var")]
-    vars: Vec<String>,
-}
-
-#[derive(FromMeta)]
 pub struct HigherOrderSetting {
     name: String,
 
@@ -51,7 +31,7 @@ pub struct HigherOrderSetting {
 
     #[darling(multiple)]
     #[darling(rename = "modifier")]
-    modifiers: Vec<ModifierDesc>,
+    modifiers: Vec<String>,
 }
 
 pub struct Entry {
@@ -90,29 +70,13 @@ pub fn schema(setting: &HigherOrderSetting) -> TResult<Entry> {
         HigherOrderType::Action => quote!(settings_schema::HigherOrderType::Action),
     };
 
-    let mut modifiers_ts = vec![];
-    for m in &setting.modifiers {
-        let target_path_ts = &m.target;
-        let update_type_ts = match m.update_op {
-            Some(UpdateType::Assign) | None => quote!(settings_schema::UpdateType::Assign),
-            Some(UpdateType::Remove) => quote!(settings_schema::UpdateType::Remove),
-        };
-        let expr = &m.expr;
-        let modifier_vars_ts = &m.vars;
-
-        modifiers_ts.push(quote!(settings_schema::ModifierDesc {
-            target: #target_path_ts.to_owned(),
-            update_operation: #update_type_ts,
-            expression: #expr.into(),
-            variables: vec![#(#modifier_vars_ts.to_owned()),*]
-        }))
-    }
+    let modifiers_ts = &setting.modifiers;
 
     Ok(Entry {
         key: key.clone(),
         entry_type_ts: quote!(settings_schema::EntryType::HigherOrder {
             data_type: #data_type_ts,
-            modifiers: vec![#(#modifiers_ts),*],
+            modifiers: vec![#(#modifiers_ts.into()),*],
         }),
     })
 }
