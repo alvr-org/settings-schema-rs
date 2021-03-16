@@ -22,6 +22,7 @@ struct Test3 {
 }
 
 #[derive(SettingsSchema)]
+#[schema(gui = "button_group")]
 enum Test2 {
     Hello1(#[schema(advanced)] i32),
     Hello2,
