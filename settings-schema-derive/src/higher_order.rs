@@ -14,7 +14,8 @@ enum HigherOrderType {
         #[darling(rename = "variant")]
         variants: Vec<String>,
 
-        gui: ChoiceControlType,
+        #[darling(default)]
+        gui: Option<ChoiceControlType>,
     },
     Boolean {
         default: bool,
@@ -52,9 +53,12 @@ pub fn schema(setting: &HigherOrderSetting) -> TResult<Entry> {
             gui,
         } => {
             let gui_ts = match gui {
-                ChoiceControlType::Dropdown => quote!(settings_schema::ChoiceControlType::Dropdown),
-                ChoiceControlType::ButtonGroup => {
-                    quote!(settings_schema::ChoiceControlType::ButtonGroup)
+                None => quote!(None),
+                Some(ChoiceControlType::Dropdown) => {
+                    quote!(Some(settings_schema::ChoiceControlType::Dropdown))
+                }
+                Some(ChoiceControlType::ButtonGroup) => {
+                    quote!(Some(settings_schema::ChoiceControlType::ButtonGroup))
                 }
             };
 

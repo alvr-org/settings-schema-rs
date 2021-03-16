@@ -88,7 +88,7 @@ pub enum HigherOrderType {
     Choice {
         default: String,
         variants: Vec<String>,
-        gui: ChoiceControlType,
+        gui: Option<ChoiceControlType>,
     },
     Boolean {
         default: bool,
