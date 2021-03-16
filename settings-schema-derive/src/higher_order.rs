@@ -31,7 +31,10 @@ enum UpdateType {
 #[derive(FromMeta)]
 struct ModifierDesc {
     target: String,
-    update_op: UpdateType,
+
+    #[darling(default)]
+    update_op: Option<UpdateType>,
+
     expr: String,
 
     #[darling(multiple)]
@@ -91,8 +94,8 @@ pub fn schema(setting: &HigherOrderSetting) -> TResult<Entry> {
     for m in &setting.modifiers {
         let target_path_ts = &m.target;
         let update_type_ts = match m.update_op {
-            UpdateType::Assign => quote!(settings_schema::UpdateType::Assign),
-            UpdateType::Remove => quote!(settings_schema::UpdateType::Remove),
+            Some(UpdateType::Assign) | None => quote!(settings_schema::UpdateType::Assign),
+            Some(UpdateType::Remove) => quote!(settings_schema::UpdateType::Remove),
         };
         let expr = &m.expr;
         let modifier_vars_ts = &m.vars;
