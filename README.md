@@ -88,7 +88,7 @@ Result:
 }
 ```
 
-In production [example](https://github.com/zarik5/ALVR/blob/web-ui/alvr/common/src/data/settings.rs).
+In production [example](https://github.com/alvr-org/ALVR/blob/master/alvr/session/src/settings.rs).
 
 ## Node types
 
