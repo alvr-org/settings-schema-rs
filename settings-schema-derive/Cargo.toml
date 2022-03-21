@@ -1,9 +1,10 @@
 [package]
 name = "settings-schema-derive"
-version = "0.3.0"
+version = "0.0.1+alvr"
 authors = ["Riccardo Zaglia <riccardo.zaglia5@gmail.com>"]
 license = "MIT"
-edition = "2018"
+edition = "2021"
+rust-version = "1.58"
 
 [lib]
 proc-macro = true
@@ -12,4 +13,4 @@ proc-macro = true
 proc-macro2 = "1"
 syn = "1"
 quote = "1"
-darling = "0.12"
+heck = "0.3"

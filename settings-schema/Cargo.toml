@@ -1,9 +1,15 @@
 [package]
 name = "settings-schema"
-version = "0.3.1"
+version = "0.0.1+alvr"
 authors = ["Riccardo Zaglia <riccardo.zaglia5@gmail.com>"]
 license = "MIT"
-edition = "2018"
+edition = "2021"
+rust-version = "1.58"
+
+[features]
+default = []
+rename_camel_case = []
+rename_snake_case = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -12,6 +18,3 @@ settings-schema-derive = { path = "../settings-schema-derive" }
 
 [[example]]
 name = "example0"
-
-[[example]]
-name = "example1"
