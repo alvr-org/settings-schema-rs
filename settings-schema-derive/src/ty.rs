@@ -12,7 +12,7 @@ pub enum NumericGuiType {
     Slider,
 }
 
-pub struct SchemaData {
+pub struct TypeSchemaData {
     // Schema representation type, assigned to a specific field in the schema representation struct
     pub default_ty_ts: TokenStream2,
 
@@ -34,8 +34,8 @@ fn forbid_numeric_attrs(field: &FieldMeta, type_str: &str) -> TResult<()> {
     let maybe_invalid_arg = field
         .min
         .as_ref()
-        .or_else(|| field.max.as_ref())
-        .or_else(|| field.step.as_ref());
+        .or(field.max.as_ref())
+        .or(field.step.as_ref());
 
     let tokens = if let Some(arg) = maybe_invalid_arg {
         arg.to_token_stream()
@@ -146,14 +146,14 @@ fn custom_leaf_type_schema(ty_ident: &Ident, field: &FieldMeta) -> TResult {
 // The meta parameter contains the attributes associated to the curent field: they are forwarded
 // as-is in every recursion step. Most of the attributes are used for numerical leaf types, but
 // there is also the `switch_default` flag that is used by each Switch type inside the type chain.
-pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStream> {
+pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<TypeSchemaData, TokenStream> {
     match &ty {
         Type::Array(TypeArray { len, elem, .. }) => {
-            let SchemaData {
+            let TypeSchemaData {
                 default_ty_ts,
                 schema_code_ts,
             } = schema(elem, meta)?;
-            Ok(SchemaData {
+            Ok(TypeSchemaData {
                 default_ty_ts: quote!([#default_ty_ts; #len]),
                 schema_code_ts: quote! {{
                     let length = #len;
@@ -182,11 +182,11 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
                     "String" => string_type_schema(meta)?,
                     _ => {
                         custom_default_ty_ts =
-                            Some(suffix_ident(&ty_ident, "Default").to_token_stream());
+                            Some(suffix_ident(ty_ident, "Default").to_token_stream());
                         custom_leaf_type_schema(ty_ident, meta)?
                     }
                 };
-                Ok(SchemaData {
+                Ok(TypeSchemaData {
                     default_ty_ts: if let Some(tokens) = custom_default_ty_ts {
                         tokens
                     } else {
@@ -195,11 +195,11 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
                     schema_code_ts,
                 })
             } else if ty_ident == "Option" {
-                let SchemaData {
+                let TypeSchemaData {
                     default_ty_ts,
                     schema_code_ts,
                 } = schema(get_only_type_argument(&ty_last.arguments), meta)?;
-                Ok(SchemaData {
+                Ok(TypeSchemaData {
                     default_ty_ts: quote!(settings_schema::OptionalDefault<#default_ty_ts>),
                     schema_code_ts: quote! {{
                         let default_set = default.set;
@@ -209,12 +209,11 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
                     }},
                 })
             } else if ty_ident == "Switch" {
-                let content_advanced = meta.switch_advanced.is_some();
-                let SchemaData {
+                let TypeSchemaData {
                     default_ty_ts,
                     schema_code_ts,
                 } = schema(get_only_type_argument(&ty_last.arguments), meta)?;
-                Ok(SchemaData {
+                Ok(TypeSchemaData {
                     default_ty_ts: quote!(settings_schema::SwitchDefault<#default_ty_ts>),
                     schema_code_ts: quote! {{
                         let default_enabled = default.enabled;
@@ -222,7 +221,6 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
                         let content = Box::new(#schema_code_ts);
                         settings_schema::SchemaNode::Switch {
                             default_enabled,
-                            content_advanced: #content_advanced,
                             content
                         }
                     }},
@@ -236,11 +234,11 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
                         error("First argument must be a `String`", &ty_tuple.elems)
                     } else {
                         let ty_arg = &ty_tuple.elems[1];
-                        let SchemaData {
+                        let TypeSchemaData {
                             default_ty_ts,
                             schema_code_ts,
                         } = schema(ty_arg, meta)?;
-                        Ok(SchemaData {
+                        Ok(TypeSchemaData {
                             default_ty_ts: quote! {
                                 settings_schema::DictionaryDefault<#default_ty_ts>
                             },
@@ -259,11 +257,11 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
                         })
                     }
                 } else {
-                    let SchemaData {
+                    let TypeSchemaData {
                         default_ty_ts,
                         schema_code_ts,
                     } = schema(ty_arg, meta)?;
-                    Ok(SchemaData {
+                    Ok(TypeSchemaData {
                         default_ty_ts: quote!(settings_schema::VectorDefault<#default_ty_ts>),
                         schema_code_ts: quote! {{
                             let default_content =
@@ -280,10 +278,10 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<SchemaData, TokenStr
             } else {
                 error(
                     "Type arguments are supported only for Option, Switch, Vec",
-                    &ty_last,
+                    ty_last,
                 )
             }
         }
-        _ => error("Unsupported type", &ty),
+        _ => error("Unsupported type", ty),
     }
 }
