@@ -1,7 +1,12 @@
 [package]
 name = "settings-schema-derive"
-version = "0.3.0"
+description = "proc-macro crate for settings-schema"
+repository = "https://github.com/zarik5/settings-schema-rs"
+readme = "../README.md"
+version = "0.1.0"
 authors = ["Riccardo Zaglia <riccardo.zaglia5@gmail.com>"]
+categories = ["config", "data-structures", "gui"]
+keywords = ["settings", "schema"]
 license = "MIT"
 edition = "2018"
 
@@ -9,7 +14,7 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1"
-syn = "1"
-quote = "1"
 darling = "0.14"
+proc-macro2 = "1"
+quote = "1"
+syn = "1"

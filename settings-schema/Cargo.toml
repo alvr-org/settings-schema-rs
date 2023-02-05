@@ -1,7 +1,12 @@
 [package]
 name = "settings-schema"
-version = "0.3.1"
+description = "Derive macro for structs and enums GUI metadata"
+repository = "https://github.com/zarik5/settings-schema-rs"
+readme = "../README.md"
+version = "0.1.0"
 authors = ["Riccardo Zaglia <riccardo.zaglia5@gmail.com>"]
+categories = ["config", "data-structures", "gui"]
+keywords = ["settings", "schema"]
 license = "MIT"
 edition = "2018"
 
