@@ -31,8 +31,8 @@ enum TestEnum {
 fn main() {
     let default = TestEnumDefault {
         variant: TestEnumDefaultVariant::Block,
-        value: 3,
-        block: TestEnumBlockDefault {
+        Value: 3,
+        Block: TestEnumBlockDefault {
             test_struct: TestStructDefault {
                 optional: OptionalDefault {
                     set: true,

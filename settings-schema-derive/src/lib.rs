@@ -18,18 +18,6 @@ fn error<T, TT: ToTokens>(message: &str, tokens: TT) -> TResult<T> {
     )
 }
 
-fn to_snake_case(pascal_case_string: &str) -> String {
-    let mut string = String::new();
-    for (i, ch) in pascal_case_string.char_indices() {
-        if i > 0 && ch.is_uppercase() {
-            string.push('_');
-        }
-        string.push(ch.to_ascii_lowercase());
-    }
-
-    string
-}
-
 fn suffix_ident(ty_ident: &Ident, suffix: &str) -> Ident {
     Ident::new(&format!("{}{}", ty_ident, suffix), ty_ident.span())
 }
@@ -138,12 +126,19 @@ struct SchemaData {
     aux_objects_ts: Option<TokenStream2>,
 }
 
-fn named_fields_schema(meta: Vec<FieldMeta>) -> TResult<SchemaData> {
+fn named_fields_schema(
+    meta: Vec<FieldMeta>,
+    vis_override: Option<Visibility>,
+) -> TResult<SchemaData> {
     let mut default_entries_ts = vec![];
     let mut schema_entries_ts = vec![];
 
     for meta in meta {
-        let vis = &meta.vis;
+        let vis = if let Some(vis) = &vis_override {
+            vis
+        } else {
+            &meta.vis
+        };
         let field_ident = meta.ident.as_ref().unwrap().clone();
         let TypeSchemaData {
             default_ty_ts,
@@ -201,8 +196,6 @@ fn variants_schema(
     for meta in meta {
         let variant_ident = meta.ident;
         let variant_string = variant_ident.to_string();
-        let snake_case_variant_ident =
-            Ident::new(&to_snake_case(&variant_string), variant_ident.span());
 
         variants.push(variant_ident.clone());
 
@@ -222,10 +215,10 @@ fn variants_schema(
                     );
                 }
 
-                default_variants_ts.push(quote!(#vis #snake_case_variant_ident: #default_ty_ts));
+                default_variants_ts.push(quote!(#vis #variant_ident: #default_ty_ts));
 
                 quote!(Some({
-                    let default = default.#snake_case_variant_ident;
+                    let default = default.#variant_ident;
                     #schema_code_ts
                 }))
             }
@@ -237,18 +230,18 @@ fn variants_schema(
                     default_fields_ts,
                     schema_code_ts,
                     ..
-                } = named_fields_schema(meta.fields.fields)?;
+                } = named_fields_schema(meta.fields.fields, Some(vis.clone()))?;
 
-                default_variants_ts.push(quote!(#vis #snake_case_variant_ident: #default_ty_ts));
+                default_variants_ts.push(quote!(#vis #variant_ident: #default_ty_ts));
                 aux_variants_structs_ts.push(quote! {
-                    #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone)]
+                    #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone, Debug)]
                     #vis struct #default_ty_ts {
                         #default_fields_ts
                     }
                 });
 
                 quote!(Some({
-                    let default = default.#snake_case_variant_ident;
+                    let default = default.#variant_ident;
                     #schema_code_ts
                 }))
             }
@@ -273,7 +266,7 @@ fn variants_schema(
     Ok(SchemaData {
         default_fields_ts: quote! {
             #(#default_variants_ts,)*
-            variant: #default_variant_ty,
+            #vis variant: #default_variant_ty,
         },
         schema_code_ts: quote!(settings_schema::SchemaNode::Choice {
             default: settings_schema::to_json_value(default.variant)
@@ -287,7 +280,7 @@ fn variants_schema(
         aux_objects_ts: Some(quote! {
             #(#aux_variants_structs_ts)*
 
-            #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone)]
+            #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone, Debug)]
             #vis enum #default_variant_ty {
                 #(#variants,)*
             }
@@ -333,14 +326,14 @@ fn schema(derive_input: DeriveInput) -> TResult {
         ast::Data::Enum(variants) => {
             variants_schema(gui_type, &vis, &derive_input_ident, variants)?
         }
-        ast::Data::Struct(ast::Fields { fields, .. }) => named_fields_schema(fields)?,
+        ast::Data::Struct(ast::Fields { fields, .. }) => named_fields_schema(fields, None)?,
     };
 
     Ok(quote! {
         #aux_objects_ts
 
         #[allow(non_snake_case)]
-        #[derive(serde::Serialize, serde::Deserialize, Clone)]
+        #[derive(settings_schema::Serialize, settings_schema::Deserialize, Clone, Debug)]
         #vis struct #default_ty_ident {
             #default_fields_ts
         }

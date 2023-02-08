@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
-pub use serde::{Deserialize, Serialize};
 pub use settings_schema_derive::SettingsSchema;
 
 // For the derive macro
+pub use serde::{Deserialize, Serialize};
 pub use serde_json::to_value as to_json_value;
 
 /// The `Switch` is used to represent something that makes sense to specify its state only when it's enabled.
 /// This should be used differently than `Option(al)`, that represent a value that can be omitted.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-#[serde(tag = "state", content = "content")]
 pub enum Switch<T> {
     Enabled(T),
     Disabled,
@@ -91,7 +90,6 @@ pub struct NamedEntry<T> {
 /// to JSON for creating GUIs in other languages.
 #[non_exhaustive]
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(tag = "type", content = "content")]
 pub enum SchemaNode {
     Section(Vec<NamedEntry<SchemaNode>>),
     Choice {
