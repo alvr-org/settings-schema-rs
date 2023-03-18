@@ -74,17 +74,13 @@ struct FieldMeta {
     #[darling(default)]
     strings: StringMap,
 
-    #[darling(default)]
-    min: Option<Lit>,
-
-    #[darling(default)]
-    max: Option<Lit>,
-
-    #[darling(default)]
-    step: Option<Lit>,
+    #[darling(multiple, rename = "flag")]
+    flags: Vec<String>,
 
     #[darling(default)]
     gui: Option<NumericGuiType>,
+
+    suffix: Option<String>,
 }
 
 #[derive(FromMeta)]
@@ -100,6 +96,9 @@ struct VariantMeta {
 
     #[darling(default)]
     strings: StringMap,
+
+    #[darling(multiple, rename = "flag")]
+    flags: Vec<String>,
 
     fields: ast::Fields<FieldMeta>,
 }
@@ -151,11 +150,13 @@ fn named_fields_schema(
             .0
             .into_iter()
             .map(|(key, value)| quote!((#key.into(), #value.into())));
+        let string_flags = meta.flags;
 
         default_entries_ts.push(quote!(#vis #field_ident: #default_ty_ts));
-        schema_entries_ts.push(quote!(settings_schema::NamedEntry {
+        schema_entries_ts.push(quote!(settings_schema::SchemaEntry {
             name: #field_string.into(),
             strings: [#(#string_key_values_ts),*].into(),
+            flags: [#(#string_flags.into()),*].into(),
             content: {
                 let default = default.#field_ident;
                 #schema_code_ts
@@ -253,10 +254,12 @@ fn variants_schema(
             .0
             .into_iter()
             .map(|(key, value)| quote!((#key.into(), #value.into())));
+        let string_flags = meta.flags;
 
-        variant_entries_ts.push(quote!(settings_schema::NamedEntry {
+        variant_entries_ts.push(quote!(settings_schema::SchemaEntry {
             name: #variant_string.into(),
             strings: [#(#string_key_values_ts),*].into(),
+            flags: [#(#string_flags.into()),*].into(),
             content: #entry_content_ts,
         }));
     }

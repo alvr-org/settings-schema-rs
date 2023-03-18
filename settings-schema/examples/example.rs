@@ -4,15 +4,18 @@ use settings_schema::*;
 
 #[derive(SettingsSchema)]
 struct TestStruct {
-    #[schema(min = 10, max = 100, step = 10, gui = "up_down")]
+    #[schema(gui(slider(min = 10, max = 100, step = 10)))]
     optional: Option<usize>,
 
     #[schema(strings(my_string = "Switch"))]
     switch: Switch<String>,
 
-    #[schema(min = -0.5, max = 0.5, step = 0.1, gui = "slider")]
+    #[schema(gui(slider(min = -0.5, max = 0.5, step = 0.1)), suffix = "m")]
     array: [f32; 2],
 
+    vec: Vec<f32>,
+
+    #[schema(flag = "advanced")]
     dictionary: Vec<(String, bool)>,
 }
 
@@ -43,10 +46,14 @@ fn main() {
                     content: "test".into(),
                 },
                 array: [0.0, 0.2],
+                vec: VectorDefault {
+                    element: 0.0,
+                    content: vec![],
+                },
                 dictionary: DictionaryDefault {
-                    key: "flag".into(),
+                    key: "key".into(),
                     value: false,
-                    content: vec![("flag 1".into(), false), ("flag 2".into(), true)],
+                    content: vec![("key 1".into(), false), ("key 2".into(), true)],
                 },
             },
         },

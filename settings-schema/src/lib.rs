@@ -1,10 +1,54 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{self, Display, Formatter},
+    ops::{Deref, RangeInclusive},
+    time::Duration,
+};
 
 pub use settings_schema_derive::SettingsSchema;
 
 // For the derive macro
 pub use serde::{Deserialize, Serialize};
 pub use serde_json::to_value as to_json_value;
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct Percentage(f32);
+
+impl Percentage {
+    pub fn new(value: u8) -> Self {
+        Self(value as f32 / 100.0)
+    }
+
+    pub fn new_normalized(value: f32) -> Self {
+        Self(value)
+    }
+}
+
+impl From<u8> for Percentage {
+    fn from(value: u8) -> Self {
+        Self(value as f32)
+    }
+}
+
+impl From<f32> for Percentage {
+    fn from(value: f32) -> Self {
+        Self(value)
+    }
+}
+
+impl Deref for Percentage {
+    type Target = f32;
+
+    fn deref(&self) -> &f32 {
+        &self.0
+    }
+}
+
+impl Display for Percentage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}%", (self.0 * 100.0) as u8)
+    }
+}
 
 /// The `Switch` is used to represent something that makes sense to specify its state only when it's enabled.
 /// This should be used differently than `Option(al)`, that represent a value that can be omitted.
@@ -66,22 +110,33 @@ pub struct DictionaryDefault<T> {
 /// GUI type associated to a numeric node.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum NumericGuiType {
+    Slider {
+        range: RangeInclusive<f64>,
+        step: Option<f64>,
+        logarithmic: bool,
+    },
     TextBox,
-    UpDown,
-    Slider,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub enum NumberType {
+    UnsignedInteger,
+    SignedInteger,
+    Float,
 }
 
 /// GUI type associated to the choice node.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum ChoiceControlType {
     Dropdown,
     ButtonGroup,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct NamedEntry<T> {
+pub struct SchemaEntry<T> {
     pub name: String,
     pub strings: HashMap<String, String>,
+    pub flags: HashSet<String>,
     pub content: T,
 }
 
@@ -91,10 +146,10 @@ pub struct NamedEntry<T> {
 #[non_exhaustive]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum SchemaNode {
-    Section(Vec<NamedEntry<SchemaNode>>),
+    Section(Vec<SchemaEntry<SchemaNode>>),
     Choice {
         default: String,
-        variants: Vec<NamedEntry<Option<SchemaNode>>>,
+        variants: Vec<SchemaEntry<Option<SchemaNode>>>,
         gui: Option<ChoiceControlType>,
     },
     Optional {
@@ -108,19 +163,26 @@ pub enum SchemaNode {
     Boolean {
         default: bool,
     },
-    Integer {
-        default: i128,
-        min: Option<i128>,
-        max: Option<i128>,
-        step: Option<i128>,
-        gui: Option<NumericGuiType>,
-    },
-    Float {
+    Number {
         default: f64,
-        min: Option<f64>,
-        max: Option<f64>,
-        step: Option<f64>,
-        gui: Option<NumericGuiType>,
+        ty: NumberType,
+        gui: NumericGuiType,
+        suffix: Option<String>,
+    },
+    Range {
+        default: [f64; 2],
+        ty: NumberType,
+        gui: NumericGuiType,
+        suffix: Option<String>,
+    },
+    Percentage {
+        default_normalized: f32,
+        range_normalized: Option<RangeInclusive<f32>>,
+    },
+    Duration {
+        default: Duration,
+        range: RangeInclusive<Duration>,
+        logarithmic: bool,
     },
     Text {
         default: String,

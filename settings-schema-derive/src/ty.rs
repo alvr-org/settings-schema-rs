@@ -1,15 +1,21 @@
 use crate::{error, suffix_ident, FieldMeta, TResult, TokenStream2};
 use darling::FromMeta;
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
+use proc_macro2::{Ident, Span};
 use quote::{quote, ToTokens};
 use syn::{GenericArgument, Lit, PathArguments, Type, TypeArray, TypePath};
 
 #[derive(FromMeta)]
 pub enum NumericGuiType {
+    Slider {
+        min: Lit,
+        max: Lit,
+        step: Option<Lit>,
+
+        #[darling(default)]
+        logarithmic: bool,
+    },
     TextBox,
-    UpDown,
-    Slider,
 }
 
 pub struct TypeSchemaData {
@@ -20,7 +26,7 @@ pub struct TypeSchemaData {
     pub schema_code_ts: TokenStream2,
 }
 
-fn get_only_type_argument(arguments: &PathArguments) -> &Type {
+fn get_first_and_only_type_argument(arguments: &PathArguments) -> &Type {
     if let PathArguments::AngleBracketed(args_block) = &arguments {
         if let GenericArgument::Type(ty) = args_block.args.first().unwrap() {
             return ty;
@@ -31,13 +37,7 @@ fn get_only_type_argument(arguments: &PathArguments) -> &Type {
 }
 
 fn forbid_numeric_attrs(field: &FieldMeta, type_str: &str) -> TResult<()> {
-    let maybe_invalid_arg = field
-        .min
-        .as_ref()
-        .or(field.max.as_ref())
-        .or(field.step.as_ref());
-
-    let tokens = if let Some(arg) = maybe_invalid_arg {
+    let tokens = if let Some(arg) = &field.suffix {
         arg.to_token_stream()
     } else if field.gui.is_some() {
         quote!()
@@ -57,72 +57,63 @@ fn bool_type_schema(field: &FieldMeta) -> TResult {
     Ok(quote!(settings_schema::SchemaNode::Boolean { default }))
 }
 
-fn maybe_integer_literal(literal: Option<&Lit>) -> TResult {
-    if let Some(literal) = literal {
-        if let Lit::Int(lit_int) = literal {
-            Ok(quote!(Some(#lit_int)))
-        } else {
-            error("Expected integer literal", literal)
-        }
-    } else {
-        Ok(quote!(None))
-    }
+enum NumberType {
+    UnsignedInteger,
+    SignedInteger,
+    Float,
 }
 
-fn maybe_float_literal(literal: Option<&Lit>) -> TResult {
-    if let Some(literal) = literal {
-        if let Lit::Float(lit_float) = literal {
-            Ok(quote!(Some(#lit_float as _)))
-        } else {
-            error("Expected float literal", literal)
-        }
-    } else {
-        Ok(quote!(None))
-    }
-}
+fn number_type_schema(field: &FieldMeta, ty_ident: &Ident, ty: NumberType) -> TResult {
+    let gui_ts = match &field.gui {
+        Some(NumericGuiType::Slider {
+            min,
+            max,
+            step,
+            logarithmic,
+        }) => {
+            let step_ts = if let Some(step) = step {
+                quote!({
+                    let step: #ty_ident = #step;
+                    Some(step as f64)
+                })
+            } else {
+                quote!(None)
+            };
 
-fn maybe_numeric_gui(gui: Option<&NumericGuiType>) -> proc_macro2::TokenStream {
-    if let Some(gui) = gui {
-        match gui {
-            NumericGuiType::TextBox => quote!(Some(settings_schema::NumericGuiType::TextBox)),
-            NumericGuiType::UpDown => quote!(Some(settings_schema::NumericGuiType::UpDown)),
-            NumericGuiType::Slider => quote!(Some(settings_schema::NumericGuiType::Slider)),
+            quote!({
+                let min: #ty_ident = #min;
+                let max: #ty_ident = #max;
+                debug_assert!(min <= max);
+
+                settings_schema::NumericGuiType::Slider {
+                    range: min as f64..=max as f64,
+                    step: #step_ts,
+                    logarithmic: #logarithmic
+                }
+            })
         }
+        _ => quote!(settings_schema::NumericGuiType::TextBox),
+    };
+
+    let suffix_ts = if let Some(suffix) = &field.suffix {
+        quote!(Some(#suffix.into()))
     } else {
         quote!(None)
-    }
-}
+    };
 
-fn integer_type_schema(field: &FieldMeta) -> TResult {
-    let min_ts = maybe_integer_literal(field.min.as_ref())?;
-    let max_ts = maybe_integer_literal(field.max.as_ref())?;
-    let step_ts = maybe_integer_literal(field.step.as_ref())?;
-    let gui_ts = maybe_numeric_gui(field.gui.as_ref());
-
-    Ok(quote! {
-        settings_schema::SchemaNode::Integer {
-            default: default as _,
-            min: #min_ts,
-            max: #max_ts,
-            step: #step_ts,
-            gui: #gui_ts,
-        }
-    })
-}
-
-fn float_type_schema(field: &FieldMeta) -> TResult {
-    let min_ts = maybe_float_literal(field.min.as_ref())?;
-    let max_ts = maybe_float_literal(field.max.as_ref())?;
-    let step_ts = maybe_float_literal(field.step.as_ref())?;
-    let gui_ts = maybe_numeric_gui(field.gui.as_ref());
+    let num_ty_string = match ty {
+        NumberType::UnsignedInteger => "UnsignedInteger",
+        NumberType::SignedInteger => "SignedInteger",
+        NumberType::Float => "Float",
+    };
+    let num_ty_ident = Ident::new(num_ty_string, Span::call_site());
 
     Ok(quote! {
-        settings_schema::SchemaNode::Float {
+        settings_schema::SchemaNode::Number {
             default: default as _,
-            min: #min_ts,
-            max: #max_ts,
-            step: #step_ts,
+            ty: settings_schema::NumberType::#num_ty_ident,
             gui: #gui_ts,
+            suffix: #suffix_ts
         }
     })
 }
@@ -141,8 +132,8 @@ fn custom_leaf_type_schema(ty_ident: &Ident, field: &FieldMeta) -> TResult {
 
 // Generate a default representation type and corresponding schema instantiation code.
 // This function calls itself recursively to parse the whole compound type. The recursion degree is
-// only 1: only types that have only one type argument can be parsed. Still custom types cannot have
-// type arguments, so they are always the leaf type.
+// 1: only types that have only one type argument can be parsed. Still custom types cannot have type
+// arguments, so they are always the leaf type.
 // The meta parameter contains the attributes associated to the curent field: they are forwarded
 // as-is in every recursion step. Most of the attributes are used for numerical leaf types, but
 // there is also the `switch_default` flag that is used by each Switch type inside the type chain.
@@ -173,32 +164,32 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<TypeSchemaData, Toke
             let ty_last = path.segments.last().unwrap();
             let ty_ident = &ty_last.ident;
             if matches!(ty_last.arguments, PathArguments::None) {
-                let mut custom_default_ty_ts = None;
+                let mut default_ty_ts = None;
                 let schema_code_ts = match ty_ident.to_string().as_str() {
                     "bool" => bool_type_schema(meta)?,
-                    "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" | "i128"
-                    | "u128" | "isize" | "usize" => integer_type_schema(meta)?,
-                    "f32" | "f64" => float_type_schema(meta)?,
+                    "u8" | "u16" | "u32" | "u64" | "usize" => {
+                        number_type_schema(meta, ty_ident, NumberType::UnsignedInteger)?
+                    }
+                    "i8" | "i16" | "i32" | "i64" | "isize" => {
+                        number_type_schema(meta, ty_ident, NumberType::SignedInteger)?
+                    }
+                    "f32" | "f64" => number_type_schema(meta, ty_ident, NumberType::Float)?,
                     "String" => string_type_schema(meta)?,
+                    "u128" | "i128" => error("Unsupported integer size", ty_ident)?,
                     _ => {
-                        custom_default_ty_ts =
-                            Some(suffix_ident(ty_ident, "Default").to_token_stream());
+                        default_ty_ts = Some(suffix_ident(ty_ident, "Default").to_token_stream());
                         custom_leaf_type_schema(ty_ident, meta)?
                     }
                 };
                 Ok(TypeSchemaData {
-                    default_ty_ts: if let Some(tokens) = custom_default_ty_ts {
-                        tokens
-                    } else {
-                        ty_ident.to_token_stream()
-                    },
+                    default_ty_ts: default_ty_ts.unwrap_or_else(|| ty_ident.to_token_stream()),
                     schema_code_ts,
                 })
             } else if ty_ident == "Option" {
                 let TypeSchemaData {
                     default_ty_ts,
                     schema_code_ts,
-                } = schema(get_only_type_argument(&ty_last.arguments), meta)?;
+                } = schema(get_first_and_only_type_argument(&ty_last.arguments), meta)?;
                 Ok(TypeSchemaData {
                     default_ty_ts: quote!(settings_schema::OptionalDefault<#default_ty_ts>),
                     schema_code_ts: quote! {{
@@ -212,7 +203,7 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<TypeSchemaData, Toke
                 let TypeSchemaData {
                     default_ty_ts,
                     schema_code_ts,
-                } = schema(get_only_type_argument(&ty_last.arguments), meta)?;
+                } = schema(get_first_and_only_type_argument(&ty_last.arguments), meta)?;
                 Ok(TypeSchemaData {
                     default_ty_ts: quote!(settings_schema::SwitchDefault<#default_ty_ts>),
                     schema_code_ts: quote! {{
@@ -226,7 +217,7 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<TypeSchemaData, Toke
                     }},
                 })
             } else if ty_ident == "Vec" {
-                let ty_arg = get_only_type_argument(&ty_last.arguments);
+                let ty_arg = get_first_and_only_type_argument(&ty_last.arguments);
                 if let Type::Tuple(ty_tuple) = ty_arg {
                     if ty_tuple.elems.len() != 2 {
                         error("Expected two arguments", &ty_tuple.elems)
