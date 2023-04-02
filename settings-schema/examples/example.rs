@@ -4,7 +4,7 @@ use settings_schema::*;
 
 #[derive(SettingsSchema)]
 struct TestStruct {
-    #[schema(gui(slider(min = 10, max = 100, step = 10)))]
+    #[schema(gui(slider(min = 10, max = 100, step = 10, logarithmic)))]
     optional: Option<usize>,
 
     #[schema(strings(my_string = "Switch"))]

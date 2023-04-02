@@ -6,18 +6,18 @@ Derive macro for generating automatically a schema from Rust structures and enum
 
 ## Node types
 
-* Section (from `struct`). Contains fields that can be marked as advanced setting. Unnamed fields are not supported.
+* Section (from `struct`). Fields can be marked with custom strings or flags. Unnamed fields are not supported.
 * Choice (from `enum`). Up to one unnamed field per variant is supported. Can be marked with the `gui` attribute with `"drop_down"` or `"button_group"`.
-* Optional (from `Option`). Describes data that can be omitted.
-* Switch. Can be `Enabled` (with data) or `Disabled`. The content can be set to advanced.
+* Optional (from `Option`). `None` is used when the content is "default" or calculated.
+* Switch. Can be `Enabled` (with data) or `Disabled`.
 * Boolean (from `bool`).
-* Integer (from `u/i 8/32/64/size`) and Float (from `f32/f64`). Can be marked with `min`, `max`, `step`, `gui` attributes. `gui` can be equal to `"text_box"`, `"up_down"` or `"slider"`.
+* Number (from `u/i 8/32/64/size` and `f32/f64`). Attribute `gui` can be `textbox` or `slider` (with sub attribtes `min`, `max`, `step` and `logarithmic`).
 * Text (from `String`).
 * Array (from `[X; N]`).
 * Vector (from `Vec<X>`).
 * Dictionary (from `Vec<(String, X)>`).
 
-Attributes like `min`, `gui` can be applied to fields with compound types like `Vec<Switch<u64>>`.
+Attributes like `gui` can be applied to fields with compound types like `Vec<Switch<u64>>`.
 
 Custom types with generic type arguments are not supported.
 
