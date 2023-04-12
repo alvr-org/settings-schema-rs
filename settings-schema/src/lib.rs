@@ -59,6 +59,10 @@ pub enum Switch<T> {
 }
 
 impl<T> Switch<T> {
+    pub fn enabled(&self) -> bool {
+        matches!(self, Self::Enabled(_))
+    }
+
     pub fn as_option(&self) -> Option<&T> {
         match self {
             Self::Enabled(t) => Some(t),
