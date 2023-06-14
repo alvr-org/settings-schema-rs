@@ -11,7 +11,7 @@ pub use settings_schema_derive::SettingsSchema;
 pub use serde::{Deserialize, Serialize};
 pub use serde_json::to_value as to_json_value;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Percentage(f32);
 
 impl Percentage {
@@ -52,7 +52,7 @@ impl Display for Percentage {
 
 /// The `Switch` is used to represent something that makes sense to specify its state only when it's enabled.
 /// This should be used differently than `Option(al)`, that represent a value that can be omitted.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Switch<T> {
     Enabled(T),
     Disabled,
