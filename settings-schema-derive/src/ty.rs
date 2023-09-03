@@ -3,14 +3,14 @@ use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{quote, ToTokens};
-use syn::{GenericArgument, Lit, PathArguments, Type, TypeArray, TypePath};
+use syn::{Expr, GenericArgument, PathArguments, Type, TypeArray, TypePath};
 
 #[derive(FromMeta)]
 pub enum NumericGuiType {
     Slider {
-        min: Lit,
-        max: Lit,
-        step: Option<Lit>,
+        min: Expr,
+        max: Expr,
+        step: Option<Expr>,
 
         #[darling(default)]
         logarithmic: bool,

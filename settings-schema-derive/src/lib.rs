@@ -5,7 +5,10 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use std::string::ToString;
-use syn::{DeriveInput, Error, Ident, Lit, Type, Visibility};
+use syn::{
+    punctuated::Punctuated, DeriveInput, Error, Expr, ExprLit, Ident, Lit, Meta, Token, Type,
+    Visibility,
+};
 use ty::{NumericGuiType, TypeSchemaData};
 
 type TResult<T = TokenStream2> = Result<T, TokenStream>;
@@ -26,21 +29,25 @@ fn suffix_ident(ty_ident: &Ident, suffix: &str) -> Ident {
 struct StringMap(Vec<(String, String)>);
 
 impl FromMeta for StringMap {
-    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
-        if let syn::Meta::List(value) = item {
+    fn from_meta(item: &Meta) -> darling::Result<Self> {
+        if let Meta::List(value) = item {
             let mut strings = vec![];
-            for item in &value.nested {
-                if let syn::NestedMeta::Meta(syn::Meta::NameValue(key_value)) = item {
+            for item in &value.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)? {
+                if let Meta::NameValue(key_value) = item {
                     let key_ident = key_value.path.get_ident().ok_or_else(|| {
                         darling::Error::custom("Key must be an identifier")
                             .with_span(&key_value.path)
                     })?;
 
-                    let value = if let Lit::Str(string) = &key_value.lit {
+                    let value = if let Expr::Lit(ExprLit {
+                        lit: Lit::Str(string),
+                        ..
+                    }) = &key_value.value
+                    {
                         string.value()
                     } else {
                         return Err(darling::Error::custom("Value must be a string")
-                            .with_span(&key_value.lit));
+                            .with_span(&key_value.value));
                     };
 
                     strings.push((key_ident.to_string(), value));
