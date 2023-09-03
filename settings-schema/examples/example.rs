@@ -36,7 +36,9 @@ fn main() {
         variant: TestEnumDefaultVariant::Block,
         Value: 3,
         Block: TestEnumBlockDefault {
+            gui_collapsed: false,
             test_struct: TestStructDefault {
+                gui_collapsed: true,
                 optional: OptionalDefault {
                     set: true,
                     content: 50,

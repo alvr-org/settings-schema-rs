@@ -139,6 +139,8 @@ fn named_fields_schema(
     let mut default_entries_ts = vec![];
     let mut schema_entries_ts = vec![];
 
+    default_entries_ts.push(quote!(pub gui_collapsed: bool));
+
     for meta in meta {
         let vis = if let Some(vis) = &vis_override {
             vis
