@@ -1,8 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Display, Formatter},
-    ops::{Deref, RangeInclusive},
-    time::Duration,
+    ops::RangeInclusive,
 };
 
 pub use settings_schema_derive::SettingsSchema;
@@ -11,44 +9,44 @@ pub use settings_schema_derive::SettingsSchema;
 pub use serde::{Deserialize, Serialize};
 pub use serde_json::to_value as to_json_value;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct Percentage(f32);
+// #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+// pub struct Percentage(f32);
 
-impl Percentage {
-    pub fn new(value: u8) -> Self {
-        Self(value as f32 / 100.0)
-    }
+// impl Percentage {
+//     pub fn new(value: u8) -> Self {
+//         Self(value as f32 / 100.0)
+//     }
 
-    pub fn new_normalized(value: f32) -> Self {
-        Self(value)
-    }
-}
+//     pub fn new_normalized(value: f32) -> Self {
+//         Self(value)
+//     }
+// }
 
-impl From<u8> for Percentage {
-    fn from(value: u8) -> Self {
-        Self(value as f32)
-    }
-}
+// impl From<u8> for Percentage {
+//     fn from(value: u8) -> Self {
+//         Self(value as f32)
+//     }
+// }
 
-impl From<f32> for Percentage {
-    fn from(value: f32) -> Self {
-        Self(value)
-    }
-}
+// impl From<f32> for Percentage {
+//     fn from(value: f32) -> Self {
+//         Self(value)
+//     }
+// }
 
-impl Deref for Percentage {
-    type Target = f32;
+// impl Deref for Percentage {
+//     type Target = f32;
 
-    fn deref(&self) -> &f32 {
-        &self.0
-    }
-}
+//     fn deref(&self) -> &f32 {
+//         &self.0
+//     }
+// }
 
-impl Display for Percentage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}%", (self.0 * 100.0) as u8)
-    }
-}
+// impl Display for Percentage {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}%", (self.0 * 100.0) as u8)
+//     }
+// }
 
 /// The `Switch` is used to represent something that makes sense to specify its state only when it's enabled.
 /// This should be used differently than `Option(al)`, that represent a value that can be omitted.
@@ -185,21 +183,21 @@ pub enum SchemaNode {
         gui: NumericGuiType,
         suffix: Option<String>,
     },
-    Range {
-        default: [f64; 2],
-        ty: NumberType,
-        gui: NumericGuiType,
-        suffix: Option<String>,
-    },
-    Percentage {
-        default_normalized: f32,
-        range_normalized: Option<RangeInclusive<f32>>,
-    },
-    Duration {
-        default: Duration,
-        range: RangeInclusive<Duration>,
-        logarithmic: bool,
-    },
+    // Range {
+    //     default: [f64; 2],
+    //     ty: NumberType,
+    //     gui: NumericGuiType,
+    //     suffix: Option<String>,
+    // },
+    // Percentage {
+    //     default_normalized: f32,
+    //     range_normalized: Option<RangeInclusive<f32>>,
+    // },
+    // Duration {
+    //     default: Duration,
+    //     range: RangeInclusive<Duration>,
+    //     logarithmic: bool,
+    // },
     Text {
         default: String,
     },
