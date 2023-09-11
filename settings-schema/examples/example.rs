@@ -3,6 +3,7 @@
 use settings_schema::*;
 
 #[derive(SettingsSchema)]
+#[schema(collapsible)]
 struct TestStruct {
     #[schema(gui(slider(min = 10, max = 100, step = 10, logarithmic)))]
     optional: Option<usize>,
@@ -25,6 +26,8 @@ enum TestEnum {
     #[schema(strings(display_name = "First option"))]
     Variant,
     Value(i32),
+
+    #[schema(collapsible)]
     Block {
         #[schema(strings(hint = "This is a test"))]
         test_struct: TestStruct,
@@ -36,9 +39,9 @@ fn main() {
         variant: TestEnumDefaultVariant::Block,
         Value: 3,
         Block: TestEnumBlockDefault {
-            gui_collapsed: false,
+            gui_collapsed: true,
             test_struct: TestStructDefault {
-                gui_collapsed: true,
+                gui_collapsed: false,
                 optional: OptionalDefault {
                     set: true,
                     content: 50,

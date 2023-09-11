@@ -107,6 +107,9 @@ struct VariantMeta {
     #[darling(multiple, rename = "flag")]
     flags: Vec<String>,
 
+    #[darling(default)]
+    collapsible: bool,
+
     fields: ast::Fields<FieldMeta>,
 }
 
@@ -117,6 +120,9 @@ struct DeriveInputMeta {
 
     #[darling(default)]
     gui: Option<ChoiceControlType>,
+
+    #[darling(default)]
+    collapsible: bool,
 }
 
 struct SchemaData {
@@ -133,13 +139,16 @@ struct SchemaData {
 }
 
 fn named_fields_schema(
+    collapsible: bool,
     meta: Vec<FieldMeta>,
     vis_override: Option<Visibility>,
 ) -> TResult<SchemaData> {
     let mut default_entries_ts = vec![];
     let mut schema_entries_ts = vec![];
 
-    default_entries_ts.push(quote!(pub gui_collapsed: bool));
+    if collapsible {
+        default_entries_ts.push(quote!(pub gui_collapsed: bool));
+    }
 
     for meta in meta {
         let vis = if let Some(vis) = &vis_override {
@@ -175,9 +184,10 @@ fn named_fields_schema(
 
     Ok(SchemaData {
         default_fields_ts: quote!(#(#default_entries_ts,)*),
-        schema_code_ts: quote!(settings_schema::SchemaNode::Section(
-            vec![#(#schema_entries_ts),*]
-        )),
+        schema_code_ts: quote!(settings_schema::SchemaNode::Section {
+            entries: vec![#(#schema_entries_ts),*],
+            gui_collapsible: #collapsible,
+        }),
         aux_objects_ts: None,
     })
 }
@@ -204,6 +214,13 @@ fn variants_schema(
     };
 
     for meta in meta {
+        if meta.collapsible && !meta.fields.style.is_struct() {
+            return error(
+                "`collapsible` attribute is not supported for variants with non struct data",
+                meta.ident,
+            );
+        }
+
         let variant_ident = meta.ident;
         let variant_string = variant_ident.to_string();
 
@@ -240,7 +257,7 @@ fn variants_schema(
                     default_fields_ts,
                     schema_code_ts,
                     ..
-                } = named_fields_schema(meta.fields.fields, Some(vis.clone()))?;
+                } = named_fields_schema(meta.collapsible, meta.fields.fields, Some(vis.clone()))?;
 
                 default_variants_ts.push(quote!(#vis #variant_ident: #default_ty_ts));
                 aux_variants_structs_ts.push(quote! {
@@ -325,6 +342,19 @@ fn schema(derive_input: DeriveInput) -> TResult {
     let meta: DeriveInputMeta =
         FromDeriveInput::from_derive_input(&derive_input).map_err(|e| e.write_errors())?;
 
+    if meta.gui.is_some() && meta.data.is_struct() {
+        return error(
+            "`gui` attribute not supported on structs",
+            derive_input.ident,
+        );
+    }
+    if meta.collapsible && meta.data.is_enum() {
+        return error(
+            "`collapsible` attribute not supported on enums",
+            derive_input.ident,
+        );
+    }
+
     let gui_type = meta.gui;
     let vis = derive_input.vis;
     let derive_input_ident = derive_input.ident;
@@ -338,7 +368,9 @@ fn schema(derive_input: DeriveInput) -> TResult {
         ast::Data::Enum(variants) => {
             variants_schema(gui_type, &vis, &derive_input_ident, variants)?
         }
-        ast::Data::Struct(ast::Fields { fields, .. }) => named_fields_schema(fields, None)?,
+        ast::Data::Struct(ast::Fields { fields, .. }) => {
+            named_fields_schema(meta.collapsible, fields, None)?
+        }
     };
 
     Ok(quote! {
