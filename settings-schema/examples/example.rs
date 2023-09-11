@@ -50,12 +50,17 @@ fn main() {
                     enabled: false,
                     content: "test".into(),
                 },
-                array: [0.0, 0.2],
+                array: ArrayDefault {
+                    gui_collapsed: false,
+                    content: [0.0, 0.2],
+                },
                 vec: VectorDefault {
+                    gui_collapsed: true,
                     element: 0.0,
                     content: vec![],
                 },
                 dictionary: DictionaryDefault {
+                    gui_collapsed: true,
                     key: "key".into(),
                     value: false,
                     content: vec![("key 1".into(), false), ("key 2".into(), true)],

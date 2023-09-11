@@ -86,7 +86,7 @@ pub struct OptionalDefault<C> {
     pub content: C,
 }
 
-/// Type used to specify the default value for type `Switch`.  
+/// Type used to specify the default value for type `Switch`.
 /// It allows setting the enabled state and its content when set to enabled.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SwitchDefault<C> {
@@ -94,18 +94,27 @@ pub struct SwitchDefault<C> {
     pub content: C,
 }
 
-/// Type used to specify the default value for type `Vec`.  
+/// Type used to specify the default value for type `Array`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ArrayDefault<T> {
+    pub gui_collapsed: bool,
+    pub content: T,
+}
+
+/// Type used to specify the default value for type `Vec`.
 /// It allows setting the default for the vector (all elements) and the default value for new elements.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VectorDefault<T> {
+    pub gui_collapsed: bool,
     pub element: T,
     pub content: Vec<T>,
 }
 
-/// Type used to specify the default value for type `Vec<(String, X)>`.  
+/// Type used to specify the default value for type `Vec<(String, X)>`.
 /// It allows setting the default for the dictionary (all entries) and the default key and value for new entries.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DictionaryDefault<T> {
+    pub gui_collapsed: bool,
     pub key: String,
     pub value: T,
     pub content: Vec<(String, T)>,
@@ -205,223 +214,3 @@ pub enum SchemaNode {
         default: serde_json::Value,
     },
 }
-
-/*
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{self, Display, Formatter},
-    ops::{Deref, RangeInclusive},
-    time::Duration,
-};
-
-pub use settings_schema_derive::SettingsSchema;
-
-// For the derive macro
-pub use serde::{Deserialize, Serialize};
-pub use serde_json::to_value as to_json_value;
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct Percentage(f32);
-
-impl Percentage {
-    pub fn new(value: u8) -> Self {
-        Self(value as f32 / 100.0)
-    }
-
-    pub fn new_normalized(value: f32) -> Self {
-        Self(value)
-    }
-}
-
-impl From<u8> for Percentage {
-    fn from(value: u8) -> Self {
-        Self(value as f32)
-    }
-}
-
-impl From<f32> for Percentage {
-    fn from(value: f32) -> Self {
-        Self(value)
-    }
-}
-
-impl Deref for Percentage {
-    type Target = f32;
-
-    fn deref(&self) -> &f32 {
-        &self.0
-    }
-}
-
-impl Display for Percentage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}%", (self.0 * 100.0) as u8)
-    }
-}
-
-/// The `Switch` is used to represent something that makes sense to specify its state only when it's enabled.
-/// This should be used differently than `Option(al)`, that represent a value that can be omitted.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Switch<T> {
-    Enabled(T),
-    Disabled,
-}
-
-impl<T> Switch<T> {
-    pub fn enabled(&self) -> bool {
-        matches!(self, Self::Enabled(_))
-    }
-
-    pub fn as_option(&self) -> Option<&T> {
-        match self {
-            Self::Enabled(t) => Some(t),
-            Self::Disabled => None,
-        }
-    }
-
-    pub fn into_option(self) -> Option<T> {
-        match self {
-            Self::Enabled(t) => Some(t),
-            Self::Disabled => None,
-        }
-    }
-}
-
-/// Type used to specify the default value for type `Option`.
-/// It allows specifying the set state and its content when it is set.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct OptionalDefault<C> {
-    pub set: bool,
-    pub content: C,
-}
-
-/// Type used to specify the default value for type `Switch`.
-/// It allows setting the enabled state and its content when set to enabled.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SwitchDefault<C> {
-    pub enabled: bool,
-    pub content: C,
-}
-
-/// Type used to specify the default value for type `Vec`.
-/// It allows setting the default for the vector (all elements) and the default value for new elements.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ArrayDefault<T> {
-    pub gui_collapsed: bool,
-    pub content: Vec<T>,
-}
-
-/// Type used to specify the default value for type `Vec`.
-/// It allows setting the default for the vector (all elements) and the default value for new elements.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct VectorDefault<T> {
-    pub gui_collapsed: bool,
-    pub element: T,
-    pub content: Vec<T>,
-}
-
-/// Type used to specify the default value for type `Vec<(String, X)>`.
-/// It allows setting the default for the dictionary (all entries) and the default key and value for new entries.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct DictionaryDefault<T> {
-    pub gui_collapsed: bool,
-    pub key: String,
-    pub value: T,
-    pub content: Vec<(String, T)>,
-}
-
-/// GUI type associated to a numeric node.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum NumericGuiType {
-    Slider {
-        range: RangeInclusive<f64>,
-        step: Option<f64>,
-        logarithmic: bool,
-    },
-    TextBox,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub enum NumberType {
-    UnsignedInteger,
-    SignedInteger,
-    Float,
-}
-
-/// GUI type associated to the choice node.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub enum ChoiceControlType {
-    Dropdown,
-    ButtonGroup,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SchemaEntry<T> {
-    pub name: String,
-    pub strings: HashMap<String, String>,
-    pub flags: HashSet<String>,
-    pub content: T,
-}
-
-/// Schema base type returned by `<YourStructOrEnum>::schema()`, generated by the macro
-/// `#[derive(SettingsSchema)]`. It can be used as is (for Rust based GUIs) or it can be serialized
-/// to JSON for creating GUIs in other languages.
-#[non_exhaustive]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum SchemaNode {
-    Section {
-        entries: Vec<SchemaEntry<SchemaNode>>,
-        collapsible: bool,
-    },
-    Choice {
-        default: String,
-        variants: Vec<SchemaEntry<Option<SchemaNode>>>,
-        gui: Option<ChoiceControlType>,
-    },
-    Optional {
-        default_set: bool,
-        content: Box<SchemaNode>,
-    },
-    Switch {
-        default_enabled: bool,
-        content: Box<SchemaNode>,
-    },
-    Boolean {
-        default: bool,
-    },
-    Number {
-        default: f64,
-        ty: NumberType,
-        gui: NumericGuiType,
-        suffix: Option<String>,
-    },
-    Range {
-        default: [f64; 2],
-        ty: NumberType,
-        gui: NumericGuiType,
-        suffix: Option<String>,
-    },
-    Percentage {
-        default_normalized: f32,
-        range_normalized: Option<RangeInclusive<f32>>,
-    },
-    Duration {
-        default: Duration,
-        range: RangeInclusive<Duration>,
-        logarithmic: bool,
-    },
-    Text {
-        default: String,
-    },
-    Array(Vec<SchemaNode>),
-    Vector {
-        default_element: Box<SchemaNode>,
-        default: serde_json::Value,
-    },
-    Dictionary {
-        default_key: String,
-        default_value: Box<SchemaNode>,
-        default: serde_json::Value,
-    },
-}
- */
