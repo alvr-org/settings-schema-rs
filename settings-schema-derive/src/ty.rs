@@ -235,7 +235,10 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<TypeSchemaData, Toke
                             },
                             schema_code_ts: quote! {{
                                 let default_content =
-                                    serde_json::to_value(default.content).unwrap();
+                                    serde_json::from_value(
+                                        serde_json::to_value(default.content).unwrap()
+                                    )
+                                    .unwrap();
                                 let default_key = default.key;
                                 let default = default.value;
                                 let default_value = Box::new(#schema_code_ts);
@@ -256,7 +259,10 @@ pub(crate) fn schema(ty: &Type, meta: &FieldMeta) -> Result<TypeSchemaData, Toke
                         default_ty_ts: quote!(settings_schema::VectorDefault<#default_ty_ts>),
                         schema_code_ts: quote! {{
                             let default_content =
-                                serde_json::to_value(default.content).unwrap();
+                                serde_json::from_value(
+                                    serde_json::to_value(default.content).unwrap()
+                                )
+                                .unwrap();
                             let default = default.element;
                             let default_element = Box::new(#schema_code_ts);
                             settings_schema::SchemaNode::Vector {

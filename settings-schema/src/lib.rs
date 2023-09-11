@@ -204,11 +204,11 @@ pub enum SchemaNode {
     Array(Vec<SchemaNode>),
     Vector {
         default_element: Box<SchemaNode>,
-        default: serde_json::Value,
+        default: Vec<serde_json::Value>,
     },
     Dictionary {
         default_key: String,
         default_value: Box<SchemaNode>,
-        default: serde_json::Value,
+        default: Vec<(String, serde_json::Value)>,
     },
 }
